@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HR Dashboard</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<h2 class="sr-only">HR Dashboard — Login, Admin Dashboard, and AI-powered Employee Portal</h2>
+
+
+
+<div style="position:relative;min-height:640px;overflow:hidden">
+
+<!-- LOGIN -->
+<div class="screen active" id="s-login">
+  <div class="login-wrap">
+    <div class="login-centre">
+      <div class="login-brand"><span>HR</span>Dashboard</div>
+      <div>
+        <div style="width:34px;height:34px;background:#1A1830;border-radius:8px;display:flex;align-items:center;justify-content:center;margin-bottom:10px"><i class="ti ti-shield-check" style="color:#7F77DD;font-size:17px" aria-hidden="true"></i></div>
+        <div class="login-tagline">Policies, leaves, and people — all in one place.</div>
+      </div>
+    </div>
+    <div class="login-card">
+      <div class="login-inner">
+        <div class="login-heading">Welcome back</div>
+        <div class="login-sub">Sign in to portal</div>
+        <div class="role-tabs">
+          <button class="role-tab sel" id="rt-admin" onclick="selRole('admin')"><i class="ti ti-shield" aria-hidden="true"></i> Admin</button>
+          <button class="role-tab" id="rt-emp" onclick="selRole('employee')"><i class="ti ti-user" aria-hidden="true"></i> Employee</button>
+        </div>
+        <div class="fi"><label>Email</label><input type="email" id="lEmail" value="admin@company.com"></div>
+        <div class="fi"><label>Password</label><input type="password" id="lPass" value="admin123" onkeydown="if(event.key==='Enter')doLogin()"></div>
+        <button class="login-btn" onclick="doLogin()">Sign in</button>
+        <div class="login-error" id="lErr">Incorrect credentials. Please try again.</div>
+        <div class="hint-box" id="loginHint">
+          Admin — admin@company.com · admin123<br>
+          Employee — priya@company.com · emp123
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ADMIN -->
+<div class="screen" id="s-admin">
+  <div class="topbar">
+    <div class="brand"><span>HR</span>Dashboard <span style="font-size:11px;color:var(--color-text-tertiary);font-weight:400;margin-left:4px">Admin</span></div>
+    <div class="tb-right"><div class="av av-a">HR</div><span class="uname">HR Admin</span><button class="logout-btn" onclick="logout()"><i class="ti ti-logout" style="font-size:13px" aria-hidden="true"></i> Sign out</button></div>
+  </div>
+  <div class="body-wrap">
+    <div class="sidebar" id="aSidebar">
+      <div class="nsec">Manage</div>
+      <div class="ni act" onclick="aPage('policies',this)"><i class="ti ti-file-text" aria-hidden="true"></i> Policies</div>
+      <div class="ni" onclick="aPage('queries',this)"><i class="ti ti-message-circle" aria-hidden="true"></i> Queries <span class="nbadge" id="qBadge">3</span></div>
+      <div class="ni" onclick="aPage('employees',this)"><i class="ti ti-users" aria-hidden="true"></i> Employees</div>
+      <div class="nsec">Reports</div>
+      <div class="ni" onclick="aPage('overview',this)"><i class="ti ti-chart-bar" aria-hidden="true"></i> Overview</div>
+    </div>
+    <div class="main">
+      <div class="pg act" id="pg-policies">
+        <div class="pg-title">Policies</div><div class="pg-sub">Create and manage company HR policies</div>
+        <div class="stats">
+          <div class="stat"><div class="stat-l">Total</div><div class="stat-v" id="sTot">5</div></div>
+          <div class="stat"><div class="stat-l">Active</div><div class="stat-v" style="color:#3B6D11" id="sAct">3</div></div>
+          <div class="stat"><div class="stat-l">Draft</div><div class="stat-v" style="color:#854F0B" id="sDraft">1</div></div>
+          <div class="stat"><div class="stat-l">Archived</div><div class="stat-v" style="color:#888780" id="sArch">1</div></div>
+        </div>
+        <div class="card">
+          <div class="card-hd"><div class="card-title"><i class="ti ti-file-text" aria-hidden="true"></i> All policies</div><button class="btn pri" onclick="openM('mPol')"><i class="ti ti-plus" aria-hidden="true"></i> New policy</button></div>
+          <div id="polList"></div>
+        </div>
+      </div>
+      <div class="pg" id="pg-queries">
+        <div class="pg-title">Employee queries</div><div class="pg-sub">Questions raised through the AI assistant</div>
+        <div class="card"><div class="card-hd"><div class="card-title"><i class="ti ti-message-circle" aria-hidden="true"></i> All queries</div></div><div id="aQList"></div></div>
+      </div>
+      <div class="pg" id="pg-employees">
+        <div class="pg-title">Employees</div><div class="pg-sub">Leave balances across the team</div>
+        <div class="card"><div class="card-hd"><div class="card-title"><i class="ti ti-users" aria-hidden="true"></i> Leave tracker</div></div><div style="overflow-x:auto"><table class="etable" id="eTable"></table></div></div>
+      </div>
+      <div class="pg" id="pg-overview">
+        <div class="pg-title">Overview</div><div class="pg-sub">Live HR snapshot</div>
+        <div class="stats">
+          <div class="stat"><div class="stat-l">Employees</div><div class="stat-v">4</div></div>
+          <div class="stat"><div class="stat-l">Active policies</div><div class="stat-v" id="ovAct">3</div></div>
+          <div class="stat"><div class="stat-l">Open queries</div><div class="stat-v" id="ovQ">3</div></div>
+          <div class="stat"><div class="stat-l">Leaves taken</div><div class="stat-v">27</div></div>
+        </div>
+        <div class="card">
+          <div class="card-title" style="margin-bottom:1rem"><i class="ti ti-chart-bar" aria-hidden="true"></i> Leave utilisation by employee</div>
+          <div style="position:relative;height:175px"><canvas id="ovChart" role="img" aria-label="Stacked bar chart of leave per employee">Leave: Priya 15, Rajan 8, Ananya 22, Dev 7 days.</canvas></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- EMPLOYEE -->
+<div class="screen" id="s-employee">
+  <div class="topbar">
+    <div class="brand"><span>HR</span>Dashboard <span style="font-size:11px;color:var(--color-text-tertiary);font-weight:400;margin-left:4px">Employee</span></div>
+    <div class="tb-right"><div class="av av-e">PK</div><span class="uname">Priya K.</span><button class="logout-btn" onclick="logout()"><i class="ti ti-logout" style="font-size:13px" aria-hidden="true"></i> Sign out</button></div>
+  </div>
+  <div class="body-wrap">
+    <div class="sidebar" id="eSidebar">
+      <div class="nsec">My space</div>
+      <div class="ni act" onclick="ePage('myLeaves',this)"><i class="ti ti-calendar" aria-hidden="true"></i> My leaves</div>
+      <div class="ni" onclick="ePage('aiChat',this)"><i class="ti ti-robot" aria-hidden="true"></i> Ask HR AI</div>
+      <div class="ni" onclick="ePage('ePolicies',this)"><i class="ti ti-file-text" aria-hidden="true"></i> Policies</div>
+    </div>
+    <div class="main">
+      <div class="pg act" id="pg-myLeaves">
+        <div class="pg-title">My leave tracker</div><div class="pg-sub">Your current balance across all leave types</div>
+        <div class="stats">
+          <div class="stat"><div class="stat-l">Annual left</div><div class="stat-v" style="color:#534AB7" id="eAL">10</div></div>
+          <div class="stat"><div class="stat-l">Sick left</div><div class="stat-v" style="color:#1D9E75" id="eSL">6</div></div>
+          <div class="stat"><div class="stat-l">WFH left</div><div class="stat-v" style="color:#BA7517" id="eWL">7</div></div>
+          <div class="stat"><div class="stat-l">Comp-off left</div><div class="stat-v" style="color:#D4537E" id="eCL">2</div></div>
+        </div>
+        <div class="card">
+          <div class="card-title" style="margin-bottom:.9rem"><i class="ti ti-chart-dots" aria-hidden="true"></i> Balance overview</div>
+          <div class="leave-row"><div class="lr-hd"><span class="lr-label">Annual leave</span><span class="lr-count" id="aTxt">8 used · 10 remaining of 18</span></div><div class="bar-track"><div class="bar-fill" style="width:44%;background:#534AB7" id="aBar"></div></div></div>
+          <div class="leave-row"><div class="lr-hd"><span class="lr-label">Sick leave</span><span class="lr-count" id="skTxt">2 used · 6 remaining of 8</span></div><div class="bar-track"><div class="bar-fill" style="width:25%;background:#1D9E75" id="skBar"></div></div></div>
+          <div class="leave-row"><div class="lr-hd"><span class="lr-label">Work from home</span><span class="lr-count" id="wTxt">5 used · 7 remaining of 12</span></div><div class="bar-track"><div class="bar-fill" style="width:42%;background:#BA7517" id="wBar"></div></div></div>
+          <div class="leave-row"><div class="lr-hd"><span class="lr-label">Comp-off</span><span class="lr-count" id="cTxt">1 used · 2 remaining of 3</span></div><div class="bar-track"><div class="bar-fill" style="width:33%;background:#D4537E" id="cBar"></div></div></div>
+        </div>
+        <div class="card">
+          <div class="card-hd"><div class="card-title"><i class="ti ti-send" aria-hidden="true"></i> Apply for leave</div></div>
+          <div class="fg2">
+            <div class="fi"><label>Type</label><select id="lvT"><option>Annual</option><option>Sick</option><option>WFH</option><option>Comp-off</option></select></div>
+            <div class="fi"><label>Days</label><input type="number" id="lvD" min="1" max="10" value="1"></div>
+          </div>
+          <div class="fi"><label>Reason</label><textarea id="lvR" placeholder="Brief reason..."></textarea></div>
+          <button class="btn pri" onclick="applyLeave()"><i class="ti ti-check" aria-hidden="true"></i> Submit request</button>
+        </div>
+      </div>
+
+      <div class="pg" id="pg-aiChat">
+        <div class="pg-title">Ask HR AI</div><div class="pg-sub">Powered by Claude — ask about policies, leaves, benefits, or any HR question</div>
+        <div class="card">
+          <div class="chips">
+            <button class="chip" onclick="chipQ('How many annual leaves do I have left?')">Annual leaves left?</button>
+            <button class="chip" onclick="chipQ('What is the WFH policy?')">WFH policy?</button>
+            <button class="chip" onclick="chipQ('How do I apply for sick leave?')">Sick leave process?</button>
+            <button class="chip" onclick="chipQ('Can I carry forward unused leaves?')">Carry forward?</button>
+            <button class="chip" onclick="chipQ('What benefits am I entitled to?')">My benefits?</button>
+          </div>
+          <div class="chat-outer">
+            <div class="chat-msgs" id="chatMsgs"></div>
+            <div class="chat-error" id="chatErr">Could not reach the AI. Please try again.</div>
+            <div class="chat-input-row">
+              <textarea id="chatIn" placeholder="Ask about any HR policy or leave..." rows="1" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChat()}"></textarea>
+              <button class="send-btn" onclick="sendChat()" aria-label="Send"><i class="ti ti-send" style="font-size:15px" aria-hidden="true"></i></button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="pg" id="pg-ePolicies">
+        <div class="pg-title">Company policies</div><div class="pg-sub">All active HR policies</div>
+        <div id="ePList"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODALS -->
+<div class="modal-bg" id="mPol">
+  <div class="modal">
+    <div class="modal-hd">New policy <button class="btn sm" onclick="closeM('mPol')" style="border:none"><i class="ti ti-x" aria-hidden="true"></i></button></div>
+    <div class="fi"><label>Policy name</label><input id="pN" placeholder="e.g. Annual Leave Policy"></div>
+    <div class="fg2">
+      <div class="fi"><label>Category</label><select id="pC"><option>Leave</option><option>Attendance</option><option>Benefits</option><option>Remote Work</option><option>Compensation</option><option>Code of Conduct</option></select></div>
+      <div class="fi"><label>Status</label><select id="pSt"><option>Active</option><option>Draft</option></select></div>
+    </div>
+    <div class="fi"><label>Effective date</label><input type="date" id="pDt"></div>
+    <div class="fi"><label>Description</label><textarea id="pDs" placeholder="Key rules and scope..."></textarea></div>
+    <div class="modal-foot"><button class="btn" onclick="closeM('mPol')">Cancel</button><button class="btn pri" onclick="addPolicy()">Save policy</button></div>
+  </div>
+</div>
+<div class="modal-bg" id="mRes">
+  <div class="modal">
+    <div class="modal-hd">Respond to query <button class="btn sm" onclick="closeM('mRes')" style="border:none"><i class="ti ti-x" aria-hidden="true"></i></button></div>
+    <div id="resDetail" style="font-size:13px;color:var(--color-text-secondary);padding:9px;background:var(--color-background-secondary);border-radius:var(--border-radius-md);margin-bottom:11px"></div>
+    <div class="fi"><label>HR response</label><textarea id="hrR" placeholder="Type your response..."></textarea></div>
+    <div class="modal-foot"><button class="btn" onclick="closeM('mRes')">Cancel</button><button class="btn pri" onclick="resolveQ()">Mark resolved</button></div>
+  </div>
+</div>
+
+<div class="notif" id="notif"></div>
+</div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
