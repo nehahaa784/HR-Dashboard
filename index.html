@@ -49,7 +49,7 @@
 <div class="screen" id="s-admin">
   <div class="topbar">
     <div class="brand"><span>HR</span>Dashboard <span style="font-size:11px;color:var(--color-text-tertiary);font-weight:400;margin-left:4px">Admin</span></div>
-    <div class="tb-right"><div class="av av-a">HR</div><span class="uname">HR Admin</span><button class="logout-btn" onclick="logout()"><i class="ti ti-logout" style="font-size:13px" aria-hidden="true"></i> Sign out</button></div>
+    <div class="tb-right"><button class="logout-btn" onclick="logout()"><i class="ti ti-logout" style="font-size:13px" aria-hidden="true"></i> Sign out</button><div class="profile-chip"><div class="av av-a">HR</div><span class="uname">HR Admin</span></div></div>
   </div>
   <div class="body-wrap">
     <div class="sidebar" id="aSidebar">
@@ -57,6 +57,8 @@
       <div class="ni act" onclick="aPage('policies',this)"><i class="ti ti-file-text" aria-hidden="true"></i> Policies</div>
       <div class="ni" onclick="aPage('queries',this)"><i class="ti ti-message-circle" aria-hidden="true"></i> Queries <span class="nbadge" id="qBadge">3</span></div>
       <div class="ni" onclick="aPage('employees',this)"><i class="ti ti-users" aria-hidden="true"></i> Employees</div>
+      <div class="ni" onclick="aPage('documents',this)"><i class="ti ti-folder" aria-hidden="true"></i> Documents</div>
+      <div class="ni" onclick="aPage('announcements',this)"><i class="ti ti-speakerphone" aria-hidden="true"></i> Announcements</div>
       <div class="nsec">Reports</div>
       <div class="ni" onclick="aPage('overview',this)"><i class="ti ti-chart-bar" aria-hidden="true"></i> Overview</div>
     </div>
@@ -82,6 +84,61 @@
         <div class="pg-title">Employees</div><div class="pg-sub">Leave balances across the team</div>
         <div class="card"><div class="card-hd"><div class="card-title"><i class="ti ti-users" aria-hidden="true"></i> Leave tracker</div></div><div style="overflow-x:auto"><table class="etable" id="eTable"></table></div></div>
       </div>
+      <div class="pg" id="pg-documents">
+        <div class="pg-title">Employee documents</div><div class="pg-sub">Upload offer letters, appointment letters, payslips, and tax documents for employees</div>
+        <div class="card">
+          <div class="card-title" style="margin-bottom:.9rem"><i class="ti ti-file-upload" aria-hidden="true"></i> Add document</div>
+          <div class="fg2">
+            <div class="fi"><label>Employee</label><select id="docEmp"></select></div>
+            <div class="fi"><label>Document type</label><select id="docType"><option value="offer">Offer Letter</option><option value="appointment">Appointment Letter</option><option value="payslip">Payslip</option><option value="tax">Tax Document</option></select></div>
+          </div>
+          <div class="fg2">
+            <div class="fi"><label>Document title / period</label><input id="docTitle" placeholder="e.g. June 2026 Payslip"></div>
+            <div class="fi"><label>Upload file</label><input id="docFile" type="file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"></div>
+          </div>
+          <button class="btn pri" onclick="addEmployeeDocument()"><i class="ti ti-plus" aria-hidden="true"></i> Add document</button>
+        </div>
+        <div class="card">
+          <div class="card-hd"><div class="card-title"><i class="ti ti-folder-open" aria-hidden="true"></i> Uploaded documents</div></div>
+          <div id="adminDocList"></div>
+        </div>
+      </div>
+      <div class="pg" id="pg-announcements">
+        <div class="pg-title">Announcements</div><div class="pg-sub">Manage employee notifications, company events, and news posts</div>
+        <div class="news-layout">
+          <div class="card">
+            <div class="card-title" style="margin-bottom:.8rem"><i class="ti ti-calendar-plus" aria-hidden="true"></i> Add special event</div>
+            <div class="fi"><label>Event title</label><input id="eventTitle" placeholder="e.g. Town Hall"></div>
+            <div class="fg2">
+              <div class="fi"><label>Date</label><input id="eventDate" type="date"></div>
+              <div class="fi"><label>Time</label><input id="eventTime" placeholder="4:00 PM"></div>
+            </div>
+            <div class="fi"><label>Location</label><input id="eventLocation" placeholder="Main Auditorium"></div>
+            <div class="fi"><label>Description</label><textarea id="eventDesc" placeholder="What employees should know..."></textarea></div>
+            <button class="btn pri" onclick="addCompanyEvent()"><i class="ti ti-plus" aria-hidden="true"></i> Publish event</button>
+          </div>
+          <div class="card">
+            <div class="card-title" style="margin-bottom:.8rem"><i class="ti ti-news" aria-hidden="true"></i> Add news post</div>
+            <div class="fi"><label>Headline</label><input id="newsTitle" placeholder="e.g. Benefits helpdesk hours extended"></div>
+            <div class="fg2">
+              <div class="fi"><label>Date</label><input id="newsDate" type="date"></div>
+              <div class="fi"><label>Tag</label><input id="newsTag" placeholder="Policy"></div>
+            </div>
+            <div class="fi"><label>Post</label><textarea id="newsBody" placeholder="Write the update employees will see..."></textarea></div>
+            <button class="btn pri" onclick="addCompanyNews()"><i class="ti ti-plus" aria-hidden="true"></i> Publish news</button>
+          </div>
+        </div>
+        <div class="news-layout">
+          <div class="card">
+            <div class="card-title" style="margin-bottom:.8rem"><i class="ti ti-calendar-event" aria-hidden="true"></i> Current events</div>
+            <div id="adminEventList"></div>
+          </div>
+          <div class="card">
+            <div class="card-title" style="margin-bottom:.8rem"><i class="ti ti-speakerphone" aria-hidden="true"></i> Current news</div>
+            <div id="adminNewsList"></div>
+          </div>
+        </div>
+      </div>
       <div class="pg" id="pg-overview">
         <div class="pg-title">Overview</div><div class="pg-sub">Live HR snapshot</div>
         <div class="stats">
@@ -94,6 +151,10 @@
           <div class="card-title" style="margin-bottom:1rem"><i class="ti ti-chart-bar" aria-hidden="true"></i> Leave utilisation by employee</div>
           <div style="position:relative;height:175px"><canvas id="ovChart" role="img" aria-label="Stacked bar chart of leave per employee">Leave: Priya 15, Rajan 8, Ananya 22, Dev 7 days.</canvas></div>
         </div>
+        <div class="card">
+          <div class="card-title" style="margin-bottom:1rem"><i class="ti ti-heart-handshake" aria-hidden="true"></i> Engagement snapshot</div>
+          <div id="engagementAdminStats"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -103,17 +164,51 @@
 <div class="screen" id="s-employee">
   <div class="topbar">
     <div class="brand"><span>HR</span>Dashboard <span style="font-size:11px;color:var(--color-text-tertiary);font-weight:400;margin-left:4px">Employee</span></div>
-    <div class="tb-right"><div class="av av-e">PK</div><span class="uname">Priya K.</span><button class="logout-btn" onclick="logout()"><i class="ti ti-logout" style="font-size:13px" aria-hidden="true"></i> Sign out</button></div>
+    <div class="tb-right"><button class="logout-btn" onclick="logout()"><i class="ti ti-logout" style="font-size:13px" aria-hidden="true"></i> Sign out</button><button class="profile-chip profile-chip-btn" onclick="openEmployeeProfileDetails()" title="View profile"><div class="av av-e">PK</div><span class="uname">Priya K.</span></button></div>
   </div>
   <div class="body-wrap">
     <div class="sidebar" id="eSidebar">
       <div class="nsec">My space</div>
-      <div class="ni act" onclick="ePage('myLeaves',this)"><i class="ti ti-calendar" aria-hidden="true"></i> My leaves</div>
+      <div class="ni act" onclick="ePage('home',this)"><i class="ti ti-home" aria-hidden="true"></i> Home</div>
+      <div class="ni" onclick="ePage('myLeaves',this)"><i class="ti ti-calendar" aria-hidden="true"></i> My leaves</div>
       <div class="ni" onclick="ePage('aiChat',this)"><i class="ti ti-robot" aria-hidden="true"></i> Ask HR AI</div>
+      <div class="ni" onclick="ePage('raiseQuery',this)"><i class="ti ti-message-plus" aria-hidden="true"></i> Raise query</div>
       <div class="ni" onclick="ePage('ePolicies',this)"><i class="ti ti-file-text" aria-hidden="true"></i> Policies</div>
+      <div class="ni" onclick="ePage('eDocuments',this)"><i class="ti ti-folder" aria-hidden="true"></i> Documents</div>
+      <div class="ni" onclick="ePage('news',this)"><i class="ti ti-speakerphone" aria-hidden="true"></i> News</div>
+      <div class="ni" onclick="ePage('engage',this)"><i class="ti ti-sparkles" aria-hidden="true"></i> Engage</div>
+      <div class="ni" onclick="ePage('resume',this)"><i class="ti ti-file-cv" aria-hidden="true"></i> Resume</div>
+      <div class="ni" onclick="ePage('games',this)"><i class="ti ti-letters-case" aria-hidden="true"></i> Words of Wonders</div>
     </div>
     <div class="main">
-      <div class="pg act" id="pg-myLeaves">
+      <div class="pg act" id="pg-home">
+        <div class="home-hero">
+          <div>
+            <div class="pg-title" id="homeTitle">Welcome back</div>
+            <div class="pg-sub" id="homeSub">Your HR workspace at a glance</div>
+          </div>
+          <div class="home-score" id="homeScore">0%</div>
+        </div>
+        <div class="card">
+          <div class="card-title" style="margin-bottom:.8rem"><i class="ti ti-calendar-stats" aria-hidden="true"></i> Leave calendar</div>
+          <div id="leaveCalendar"></div>
+        </div>
+        <div class="home-grid">
+          <div class="card">
+            <div class="card-hd" style="margin-bottom:.8rem">
+              <div class="card-title"><i class="ti ti-bell" aria-hidden="true"></i> Notifications</div>
+              <button class="btn sm" id="clearNotifBtn" onclick="clearNotifications()"><i class="ti ti-checks" aria-hidden="true"></i> Clear</button>
+            </div>
+            <div id="notificationList"></div>
+          </div>
+          <div class="card">
+            <div class="card-title" style="margin-bottom:.8rem"><i class="ti ti-news" aria-hidden="true"></i> News</div>
+            <div id="homeNewsList"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="pg" id="pg-myLeaves">
         <div class="pg-title">My leave tracker</div><div class="pg-sub">Your current balance across all leave types</div>
         <div class="stats">
           <div class="stat"><div class="stat-l">Annual left</div><div class="stat-v" style="color:#534AB7" id="eAL">10</div></div>
@@ -148,6 +243,9 @@
             <button class="chip" onclick="chipQ('How do I apply for sick leave?')">Sick leave process?</button>
             <button class="chip" onclick="chipQ('Can I carry forward unused leaves?')">Carry forward?</button>
             <button class="chip" onclick="chipQ('What benefits am I entitled to?')">My benefits?</button>
+            <button class="chip" onclick="chipQ('Summarize my unread policies')">Unread policies?</button>
+            <button class="chip" onclick="chipQ('What HR action is pending from me?')">Pending action?</button>
+            <button class="chip" onclick="chipQ('Can I take WFH this Friday?')">WFH this Friday?</button>
           </div>
           <div class="chat-outer">
             <div class="chat-msgs" id="chatMsgs"></div>
@@ -160,9 +258,123 @@
         </div>
       </div>
 
+      <div class="pg" id="pg-raiseQuery">
+        <div class="pg-title">Raise HR query</div><div class="pg-sub">Send a policy, leave, payroll, or workplace question to HR</div>
+        <div class="card">
+          <div class="card-hd"><div class="card-title"><i class="ti ti-message-plus" aria-hidden="true"></i> New query</div></div>
+          <div class="fi"><label>Subject</label><input id="rqSubject" placeholder="e.g. Leave carry forward clarification"></div>
+          <div class="fi"><label>Category</label><select id="rqCategory"><option>Policy</option><option>Leave</option><option>Payroll</option><option>Benefits</option><option>Workplace</option><option>Other</option></select></div>
+          <div class="fi"><label>Question</label><textarea id="rqMsg" placeholder="Write your question for HR..."></textarea></div>
+          <button class="btn pri" onclick="raiseEmployeeQuery()"><i class="ti ti-send" aria-hidden="true"></i> Submit query</button>
+        </div>
+        <div class="card">
+          <div class="card-title" style="margin-bottom:.9rem"><i class="ti ti-history" aria-hidden="true"></i> My submitted queries</div>
+          <div id="myQueryList"></div>
+        </div>
+      </div>
+
       <div class="pg" id="pg-ePolicies">
         <div class="pg-title">Company policies</div><div class="pg-sub">All active HR policies</div>
         <div id="ePList"></div>
+      </div>
+      <div class="pg" id="pg-eDocuments">
+        <div class="pg-title">My documents</div><div class="pg-sub">Offer letter, appointment letter, payslips, and tax documents shared by HR</div>
+        <div class="document-grid" id="employeeDocList"></div>
+      </div>
+      <div class="pg" id="pg-news">
+        <div class="pg-title">Company news</div><div class="pg-sub">Events, birthdays, and updates from your workplace</div>
+        <div class="news-layout">
+          <div class="card">
+            <div class="card-title" style="margin-bottom:.8rem"><i class="ti ti-calendar-event" aria-hidden="true"></i> Special events</div>
+            <div id="eventList"></div>
+          </div>
+          <div class="card">
+            <div class="card-title" style="margin-bottom:.8rem"><i class="ti ti-cake" aria-hidden="true"></i> Colleague birthdays</div>
+            <div id="birthdayList"></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title" style="margin-bottom:.8rem"><i class="ti ti-news" aria-hidden="true"></i> News portal</div>
+          <div id="companyNewsList"></div>
+        </div>
+      </div>
+      <div class="pg" id="pg-engage">
+        <div class="pg-title">Employee engagement</div><div class="pg-sub">Badges, mood pulse, learning, team wall, and leave planning</div>
+        <div class="engage-grid">
+          <div class="card">
+            <div class="card-title" style="margin-bottom:.8rem"><i class="ti ti-award" aria-hidden="true"></i> My badges</div>
+            <div id="badgeList"></div>
+          </div>
+          <div class="card">
+            <div class="card-title" style="margin-bottom:.8rem"><i class="ti ti-heart-handshake" aria-hidden="true"></i> Weekly mood pulse</div>
+            <div id="moodPulseBox"></div>
+          </div>
+        </div>
+        <div class="engage-grid">
+          <div class="card">
+            <div class="card-title" style="margin-bottom:.8rem"><i class="ti ti-school" aria-hidden="true"></i> Policy micro-quiz</div>
+            <div id="learningQuizBox"></div>
+          </div>
+          <div class="card">
+            <div class="card-title" style="margin-bottom:.8rem"><i class="ti ti-plane-tilt" aria-hidden="true"></i> Leave planner</div>
+            <div id="leavePlannerBox"></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title" style="margin-bottom:.8rem"><i class="ti ti-users-group" aria-hidden="true"></i> Team wall</div>
+          <div class="fg2">
+            <div class="fi"><label>Shoutout / update</label><input id="wallMsg" placeholder="Recognize a colleague or share a team moment"></div>
+            <div class="fi"><label>Tag</label><select id="wallTag"><option>Shoutout</option><option>Welcome</option><option>Achievement</option><option>Help needed</option></select></div>
+          </div>
+          <button class="btn pri" onclick="addWallPost()"><i class="ti ti-send" aria-hidden="true"></i> Post</button>
+          <div id="teamWallList" style="margin-top:1rem"></div>
+        </div>
+      </div>
+      <div class="pg" id="pg-resume">
+        <div class="pg-title">Resume builder</div><div class="pg-sub">Create, edit, preview, and print your professional resume</div>
+        <div class="resume-layout">
+          <div class="card">
+            <div class="card-hd"><div class="card-title"><i class="ti ti-edit" aria-hidden="true"></i> Resume editor</div><button class="btn sm" onclick="prefillResumeFromProfile()"><i class="ti ti-wand" aria-hidden="true"></i> Fill from profile</button></div>
+            <div class="fg2">
+              <div class="fi"><label>Full name</label><input id="resName" oninput="renderResumePreview()"></div>
+              <div class="fi"><label>Job title</label><input id="resTitle" oninput="renderResumePreview()"></div>
+            </div>
+            <div class="fg2">
+              <div class="fi"><label>Email</label><input id="resEmail" oninput="renderResumePreview()"></div>
+              <div class="fi"><label>Phone</label><input id="resPhone" oninput="renderResumePreview()"></div>
+            </div>
+            <div class="fi"><label>Location / LinkedIn</label><input id="resLinks" placeholder="City | LinkedIn | Portfolio" oninput="renderResumePreview()"></div>
+            <div class="fi"><label>Professional summary</label><textarea id="resSummary" oninput="renderResumePreview()" placeholder="2-3 lines about your experience and strengths"></textarea></div>
+            <div class="fi"><label>Skills</label><textarea id="resSkills" oninput="renderResumePreview()" placeholder="Comma separated skills"></textarea></div>
+            <div class="fi"><label>Experience</label><textarea id="resExperience" oninput="renderResumePreview()" placeholder="Role - Company - Dates&#10;- Achievement one&#10;- Achievement two"></textarea></div>
+            <div class="fi"><label>Education</label><textarea id="resEducation" oninput="renderResumePreview()" placeholder="Degree - Institute - Year"></textarea></div>
+            <div class="fi"><label>Projects / Certifications</label><textarea id="resProjects" oninput="renderResumePreview()" placeholder="Project or certification details"></textarea></div>
+            <div class="modal-foot"><button class="btn" onclick="resetResumeForm()"><i class="ti ti-refresh" aria-hidden="true"></i> Reset</button><button class="btn pri" onclick="saveResume()"><i class="ti ti-device-floppy" aria-hidden="true"></i> Save resume</button></div>
+          </div>
+          <div class="card">
+            <div class="card-hd"><div class="card-title"><i class="ti ti-file-text" aria-hidden="true"></i> Resume preview</div><button class="btn pri sm" onclick="printResume()"><i class="ti ti-printer" aria-hidden="true"></i> Print / PDF</button></div>
+            <div class="resume-sheet" id="resumePreview"></div>
+          </div>
+        </div>
+      </div>
+      <div class="pg" id="pg-games">
+        <div class="pg-title">Words of Wonders</div><div class="pg-sub">Build words from letters and complete each level</div>
+        <div class="game-shell">
+          <div class="game-status">
+            <div><span>Words found</span><strong id="wordsFound">0/0</strong></div>
+            <div><span>Points</span><strong id="wordPoints">0</strong></div>
+          </div>
+          <div class="card game-card">
+            <div id="gameArea">
+              <div class="game-intro">
+                <i class="ti ti-letters-case" aria-hidden="true"></i>
+                <h2>Words of Wonders</h2>
+                <p>Use the letter set to discover hidden words. Find every word to unlock the next level.</p>
+                <button class="btn pri" onclick="startWordGame()"><i class="ti ti-player-play" aria-hidden="true"></i> Start Game</button>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -188,6 +400,42 @@
     <div id="resDetail" style="font-size:13px;color:var(--color-text-secondary);padding:9px;background:var(--color-background-secondary);border-radius:var(--border-radius-md);margin-bottom:11px"></div>
     <div class="fi"><label>HR response</label><textarea id="hrR" placeholder="Type your response..."></textarea></div>
     <div class="modal-foot"><button class="btn" onclick="closeM('mRes')">Cancel</button><button class="btn pri" onclick="resolveQ()">Mark resolved</button></div>
+  </div>
+</div>
+<div class="modal-bg" id="mProfileView">
+  <div class="modal">
+    <div class="modal-hd">My profile <button class="btn sm" onclick="closeM('mProfileView')" style="border:none"><i class="ti ti-x" aria-hidden="true"></i></button></div>
+    <div id="profileDetailBody"></div>
+    <div class="modal-foot"><button class="btn" onclick="closeM('mProfileView')">Close</button><button class="btn pri sm" onclick="openProfileEditFromDetails()"><i class="ti ti-pencil" aria-hidden="true"></i> Edit</button></div>
+  </div>
+</div>
+<div class="modal-bg" id="mProfile">
+  <div class="modal">
+    <div class="modal-hd">Edit my profile <button class="btn sm" onclick="closeM('mProfile')" style="border:none"><i class="ti ti-x" aria-hidden="true"></i></button></div>
+    <div class="hint-box" style="margin-top:0;margin-bottom:12px">You can update only your date of birth, profile picture, and hobbies. HR-managed fields are locked.</div>
+    <div class="fi"><label>Date of birth</label><input type="date" id="profileDob"></div>
+    <div class="fi">
+      <label>Profile picture</label>
+      <input type="file" id="profilePic" accept="image/png,image/jpeg,image/webp" onchange="loadProfileCrop(event)">
+      <div class="profile-preview" id="profilePreview"></div>
+      <div class="crop-editor" id="profileCropEditor">
+        <div class="crop-frame" id="profileCropFrame"><img id="profileCropImage" alt="Crop preview"></div>
+        <div class="crop-controls">
+          <div class="fi"><label>Zoom</label><input type="range" id="profileZoom" min="1" max="3" step="0.05" value="1" oninput="setProfileZoom(this.value)"></div>
+          <div class="crop-buttons">
+            <button class="btn sm" type="button" onclick="nudgeProfileCrop(0,-10)" title="Move up"><i class="ti ti-arrow-up" aria-hidden="true"></i></button>
+            <button class="btn sm" type="button" onclick="nudgeProfileCrop(-10,0)" title="Move left"><i class="ti ti-arrow-left" aria-hidden="true"></i></button>
+            <button class="btn sm" type="button" onclick="nudgeProfileCrop(10,0)" title="Move right"><i class="ti ti-arrow-right" aria-hidden="true"></i></button>
+            <button class="btn sm" type="button" onclick="nudgeProfileCrop(0,10)" title="Move down"><i class="ti ti-arrow-down" aria-hidden="true"></i></button>
+            <button class="btn sm" type="button" onclick="rotateProfileCrop(-90)" title="Rotate left"><i class="ti ti-rotate-2" aria-hidden="true"></i></button>
+            <button class="btn sm" type="button" onclick="rotateProfileCrop(90)" title="Rotate right"><i class="ti ti-rotate-clockwise-2" aria-hidden="true"></i></button>
+            <button class="btn sm pri" type="button" onclick="applyProfileCrop()"><i class="ti ti-crop" aria-hidden="true"></i> Apply crop</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="fi"><label>Hobbies</label><textarea id="profileHobbies" placeholder="e.g. Reading, cricket, music"></textarea></div>
+    <div class="modal-foot"><button class="btn" onclick="closeM('mProfile')">Cancel</button><button class="btn pri" onclick="saveEmployeeProfile()">Save profile</button></div>
   </div>
 </div>
 

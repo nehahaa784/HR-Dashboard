@@ -5,7 +5,7 @@ const COMPANY={
   companyName:'Vayana Network',
   portalName:'HRPulse',
   portalSubtitle:'Internal HR Portal',
-  supportEmail:'hr@company.com',
+  supportEmail:'hr@vayana.com',
   securityNotice:'Authorized employees only. Activity may be reviewed for HR governance.',
   showDemoCredentials:true,
   ...(window.HRPULSE_COMPANY||{})
@@ -68,6 +68,8 @@ function aPage(pg,el){
   if(pg==='policies') renderPolicies();
   if(pg==='queries') renderQueries();
   if(pg==='employees') renderEmpTable();
+  if(pg==='documents') renderAdminDocuments();
+  if(pg==='announcements') renderAnnouncements();
   if(pg==='overview') renderOverview();
 }
 
@@ -76,8 +78,13 @@ function ePage(pg,el){
   document.querySelectorAll('#eSidebar .ni').forEach(n=>n.classList.remove('act'));
   document.getElementById('pg-'+pg).classList.add('act');
   el.classList.add('act');
+  if(pg==='home') renderEmployeeHome();
   if(pg==='ePolicies') renderEPolicies();
+  if(pg==='eDocuments') renderEmployeeDocuments();
   if(pg==='raiseQuery') renderMyQueries();
+  if(pg==='news') renderNewsPortal();
+  if(pg==='engage') renderEngage();
+  if(pg==='games') renderGameTab();
 }
 
 function renderPolicies(){
@@ -122,6 +129,14 @@ function renderEmpTable(){
 
 function renderOverview(){
   if(document.getElementById('ovAct')) document.getElementById('ovAct').textContent=policies.filter(p=>p.status==='Active').length;
+  const engagement=document.getElementById('engagementAdminStats');
+  if(engagement&&store){
+    const moodCount=(store.moodPulse||[]).length;
+    const wallCount=(store.teamWall||[]).length;
+    const completions=store.employees.reduce((sum,e)=>sum+(e.learningCompletions||[]).length,0);
+    const acknowledged=store.employees.reduce((sum,e)=>sum+(e.documents||[]).filter(d=>d.acknowledgedAt).length,0);
+    engagement.innerHTML=`<div class="engage-stats"><div><span>Mood check-ins</span><strong>${moodCount}</strong></div><div><span>Wall posts</span><strong>${wallCount}</strong></div><div><span>Lessons done</span><strong>${completions}</strong></div><div><span>Docs acknowledged</span><strong>${acknowledged}</strong></div></div>`;
+  }
   const ctx=document.getElementById('ovChart');
   if(!ctx) return;
   if(ovCI) ovCI.destroy();
@@ -307,7 +322,20 @@ document.getElementById('pDt').valueAsDate=new Date();
 
 /* Live multi-user portal layer: localStorage keeps this frontend-only demo persistent. */
 const HRP_KEY='hrpulse_live_portals_v1';
+const HRP_GAME_KEY='hrpulse_word_wonders_progress_v1';
 let liveRole='hr', currentUser=null, liveResolveId=null, liveChart=null, botBusy=false;
+let profileCropState={src:'',x:0,y:0,zoom:1,rotation:0,cropped:''};
+const DOCUMENT_TYPES=[
+  {key:'offer',label:'Offer Letter',icon:'ti-file-certificate'},
+  {key:'appointment',label:'Appointment Letter',icon:'ti-briefcase'},
+  {key:'payslip',label:'Payslips',icon:'ti-receipt-2'},
+  {key:'tax',label:'Tax Documents',icon:'ti-file-dollar'}
+];
+const ENGAGE_QUIZ=[
+  {id:'policy-basics',title:'Policy basics',question:'Where should you check the latest active HR rules?',options:['Company policies tab','Old chat screenshots','Ask a friend only'],answer:0},
+  {id:'leave-ready',title:'Leave readiness',question:'What is the best first step before taking planned leave?',options:['Apply with reason in the portal','Disappear for a day','Tell HR after returning'],answer:0},
+  {id:'doc-care',title:'Document care',question:'What should you do after HR uploads an important document?',options:['Download and acknowledge it','Ignore it','Forward it publicly'],answer:0}
+];
 
 const seedData={
   hrs:[
@@ -315,10 +343,10 @@ const seedData={
     {id:'hr-2',name:'Nikhil Rao',email:'nikhil.hr@company.com',password:'hr123',title:'People Partner'}
   ],
   employees:[
-    {id:'emp-1',name:'Priya K.',email:'priya@company.com',password:'emp123',mustChangePassword:false,dept:'Engineering',role:'Frontend Engineer',status:'Active',manager:'Amit S.',leave:{annual:{u:8,t:18},sick:{u:2,t:8},wfh:{u:5,t:12},comp:{u:1,t:3}}},
-    {id:'emp-2',name:'Rajan M.',email:'rajan@company.com',password:'emp123',mustChangePassword:false,dept:'Finance',role:'Analyst',status:'Active',manager:'Meera Shah',leave:{annual:{u:5,t:18},sick:{u:0,t:8},wfh:{u:3,t:12},comp:{u:0,t:3}}},
-    {id:'emp-3',name:'Ananya T.',email:'ananya@company.com',password:'emp123',mustChangePassword:false,dept:'Design',role:'Product Designer',status:'Active',manager:'Amit S.',leave:{annual:{u:12,t:18},sick:{u:3,t:8},wfh:{u:7,t:12},comp:{u:0,t:3}}},
-    {id:'emp-4',name:'Dev K.',email:'dev@company.com',password:'emp123',mustChangePassword:false,dept:'Marketing',role:'Growth Lead',status:'Active',manager:'Nikhil Rao',leave:{annual:{u:2,t:18},sick:{u:1,t:8},wfh:{u:4,t:12},comp:{u:0,t:3}}}
+    {id:'emp-1',name:'Priya K.',email:'priya@company.com',password:'emp123',mustChangePassword:false,dept:'Engineering',role:'Frontend Engineer',status:'Active',manager:'Amit S.',profile:{dob:'1998-05-12',hobbies:'Reading, badminton',photo:''},leave:{annual:{u:8,t:18},sick:{u:2,t:8},wfh:{u:5,t:12},comp:{u:1,t:3}}},
+    {id:'emp-2',name:'Rajan M.',email:'rajan@company.com',password:'emp123',mustChangePassword:false,dept:'Finance',role:'Analyst',status:'Active',manager:'Meera Shah',profile:{dob:'1994-06-22',hobbies:'Cricket, finance podcasts',photo:''},leave:{annual:{u:5,t:18},sick:{u:0,t:8},wfh:{u:3,t:12},comp:{u:0,t:3}}},
+    {id:'emp-3',name:'Ananya T.',email:'ananya@company.com',password:'emp123',mustChangePassword:false,dept:'Design',role:'Product Designer',status:'Active',manager:'Amit S.',profile:{dob:'1996-06-25',hobbies:'Sketching, travel',photo:''},leave:{annual:{u:12,t:18},sick:{u:3,t:8},wfh:{u:7,t:12},comp:{u:0,t:3}}},
+    {id:'emp-4',name:'Dev K.',email:'dev@company.com',password:'emp123',mustChangePassword:false,dept:'Marketing',role:'Growth Lead',status:'Active',manager:'Nikhil Rao',profile:{dob:'1993-07-04',hobbies:'Music, football',photo:''},leave:{annual:{u:2,t:18},sick:{u:1,t:8},wfh:{u:4,t:12},comp:{u:0,t:3}}}
   ],
   policies:[
     {id:1,name:'Annual Leave Policy',cat:'Leave',status:'Active',date:'2024-01-01',desc:'Employees get 18 days of paid annual leave per year, accruing at 1.5 days per month. Up to 5 unused days can be carried forward to the next year.'},
@@ -333,6 +361,20 @@ const seedData={
     {id:3,empId:'emp-3',emp:'Ananya T.',category:'Leave',subject:'Sick leave certificate',msg:'Is a medical cert needed for a 2-day absence?',status:'pending',response:null,createdAt:'2026-06-18T10:05:00+05:30'},
     {id:4,empId:'emp-4',emp:'Dev K.',category:'Leave',subject:'Carry forward limit',msg:'How many leaves can I carry to next year?',status:'resolved',response:'Up to 5 days per Annual Leave Policy.',createdAt:'2026-06-17T16:20:00+05:30'}
   ],
+  events:[
+    {id:'evt-1',title:'Quarterly Town Hall',date:'2026-06-24',time:'4:00 PM',location:'Main Auditorium',desc:'Leadership updates, employee recognitions, and open Q&A.'},
+    {id:'evt-2',title:'Wellness Week',date:'2026-06-27',time:'All day',location:'Campus and online',desc:'Health sessions, yoga, preventive checkups, and wellness consultations.'},
+    {id:'evt-3',title:'Learning Friday',date:'2026-07-03',time:'2:30 PM',location:'Training Room 2',desc:'Skill-sharing session hosted by Engineering and HR.'}
+  ],
+  news:[
+    {id:'news-1',title:'New hybrid work guideline published',date:'2026-06-18',tag:'Policy',body:'Employees can review the latest WFH guidance in the Policies section.'},
+    {id:'news-2',title:'Employee referral drive opens next week',date:'2026-06-19',tag:'Hiring',body:'Refer candidates for open roles and track referral rewards through HR.'},
+    {id:'news-3',title:'Benefits helpdesk hours extended',date:'2026-06-20',tag:'Benefits',body:'HR support will be available until 7 PM through the end of the month.'}
+  ],
+  teamWall:[
+    {id:'wall-1',empId:'emp-1',emp:'Priya K.',tag:'Shoutout',msg:'Huge thanks to Design for the quick policy poster refresh.',createdAt:'2026-06-18T11:20:00+05:30',likes:['emp-3']}
+  ],
+  moodPulse:[],
   nextPolicyId:6,
   nextQueryId:5,
   nextEmployeeId:5
@@ -356,6 +398,11 @@ function normalizeStore(data){
   merged.employees=Array.isArray(data.employees)?data.employees:base.employees;
   merged.policies=Array.isArray(data.policies)?data.policies:base.policies;
   merged.queries=Array.isArray(data.queries)?data.queries:base.queries;
+  merged.events=Array.isArray(data.events)?data.events:base.events;
+  merged.news=Array.isArray(data.news)?data.news:base.news;
+  merged.teamWall=Array.isArray(data.teamWall)?data.teamWall:base.teamWall;
+  merged.moodPulse=Array.isArray(data.moodPulse)?data.moodPulse:base.moodPulse;
+  merged.news.forEach(n=>{n.reactions=n.reactions||{};});
   merged.policies.forEach(p=>{p.format=p.format||'text';});
   merged.queries.forEach((q,i)=>{
     q.id=q.id||i+1;
@@ -368,9 +415,23 @@ function normalizeStore(data){
     e.status=e.status||'Active';
     e.password=e.password||'emp123';
     e.mustChangePassword=Boolean(e.mustChangePassword);
+    e.profile=e.profile||{};
+    e.profile.dob=e.profile.dob||'';
+    e.profile.hobbies=e.profile.hobbies||'';
+    e.profile.photo=e.profile.photo||'';
+    const seedEmployee=base.employees.find(emp=>emp.id===e.id);
+    if(seedEmployee?.profile){
+      e.profile.dob=e.profile.dob||seedEmployee.profile.dob||'';
+      e.profile.hobbies=e.profile.hobbies||seedEmployee.profile.hobbies||'';
+    }
     e.leave=e.leave||JSON.parse(JSON.stringify(base.employees[0].leave));
     ['annual','sick','wfh','comp'].forEach(k=>{e.leave[k]=e.leave[k]||{u:0,t:k==='annual'?18:k==='sick'?8:k==='wfh'?12:3};});
     e.policyReads=e.policyReads||{};
+    e.learningCompletions=Array.isArray(e.learningCompletions)?e.learningCompletions:[];
+    e.dismissedNotifications=Array.isArray(e.dismissedNotifications)?e.dismissedNotifications:[];
+    e.documents=Array.isArray(e.documents)?e.documents:[];
+    e.documents.forEach(doc=>{doc.acknowledgedAt=doc.acknowledgedAt||'';});
+    e.gameProgress=e.gameProgress||null;
   });
   merged.nextPolicyId=merged.nextPolicyId||Math.max(0,...merged.policies.map(p=>Number(p.id)||0))+1;
   merged.nextQueryId=merged.nextQueryId||Math.max(0,...merged.queries.map(q=>Number(q.id)||0))+1;
@@ -380,6 +441,19 @@ function normalizeStore(data){
 function initials(name){return name.split(/\s+/).map(p=>p[0]).join('').slice(0,2).toUpperCase();}
 function employeeById(id){return store.employees.find(e=>e.id===id);}
 function isEmail(v){return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);}
+function docTypeLabel(type){return DOCUMENT_TYPES.find(d=>d.key===type)?.label||'Document';}
+function docTypeIcon(type){return DOCUMENT_TYPES.find(d=>d.key===type)?.icon||'ti-file';}
+function avatarHtml(employee, cls='av av-e'){
+  return employee?.profile?.photo
+    ? `<img class="${cls} avatar-img" src="${employee.profile.photo}" alt="${employee.name} profile picture">`
+    : `<div class="${cls}">${initials(employee?.name||'Employee')}</div>`;
+}
+function formatDob(value){
+  if(!value) return 'Not added';
+  const dt=new Date(`${value}T00:00:00`);
+  if(Number.isNaN(dt.getTime())) return value;
+  return dt.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'});
+}
 function formatQueryTime(value){
   const dt=new Date(value||Date.now());
   if(Number.isNaN(dt.getTime())) return 'Time unavailable';
@@ -404,7 +478,7 @@ function portalBrand(role){
   return `${split} <span style="font-size:11px;color:var(--color-text-tertiary);font-weight:400;margin-left:4px">${role}</span>`;
 }
 function applyCompanyBranding(){
-  document.title=`${COMPANY.portalName} - ${COMPANY.companyName}`;
+  document.title=`${COMPANY.portalName} - ${COMPANY.companyName} HR portal`;
   document.querySelector('.sr-only').textContent=`${COMPANY.portalName} - ${COMPANY.companyName} HR portal`;
   const loginBrand=document.querySelector('.login-brand');
   if(loginBrand) loginBrand.innerHTML=portalBrand('').replace(/ <span[^>]*><\/span>$/,'');
@@ -433,6 +507,367 @@ function policyAttachmentLink(p){
   const fileName=p.fileName||`${p.name}.pdf`;
   return `<a class="policy-file-link" href="${p.fileData}" target="_blank" rel="noopener" download="${fileName}"><i class="ti ti-file-type-pdf" aria-hidden="true"></i> ${fileName}</a>`;
 }
+function activePolicies(){return store.policies.filter(p=>p.status==='Active');}
+function employeeQueries(employee){return store.queries.filter(q=>q.empId===employee?.id).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));}
+function unreadPolicies(employee){return activePolicies().filter(p=>!employee?.policyReads?.[p.id]);}
+function formatDateOnly(value){
+  const dt=new Date(`${value}T00:00:00`);
+  if(Number.isNaN(dt.getTime())) return value||'Date pending';
+  return dt.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'});
+}
+function sortedEvents(){
+  return (store.events||[]).slice().sort((a,b)=>new Date(`${a.date}T00:00:00`)-new Date(`${b.date}T00:00:00`));
+}
+function upcomingEvents(){
+  const today=new Date();
+  const start=new Date(today.getFullYear(),today.getMonth(),today.getDate());
+  return sortedEvents().filter(ev=>{
+    const dt=new Date(`${ev.date}T00:00:00`);
+    return !Number.isNaN(dt.getTime())&&dt>=start;
+  });
+}
+function latestNews(){
+  return (store.news||[]).slice().sort((a,b)=>new Date(`${b.date}T00:00:00`)-new Date(`${a.date}T00:00:00`));
+}
+function nextBirthdayDate(dob){
+  if(!dob) return null;
+  const parts=dob.split('-').map(Number);
+  if(parts.length<3||!parts[1]||!parts[2]) return null;
+  const today=new Date();
+  const start=new Date(today.getFullYear(),today.getMonth(),today.getDate());
+  let next=new Date(today.getFullYear(),parts[1]-1,parts[2]);
+  if(next<start) next=new Date(today.getFullYear()+1,parts[1]-1,parts[2]);
+  return next;
+}
+function upcomingBirthdays(employee){
+  return store.employees
+    .filter(emp=>emp.status==='Active'&&emp.id!==employee?.id&&emp.profile?.dob)
+    .map(emp=>({employee:emp,date:nextBirthdayDate(emp.profile.dob)}))
+    .filter(item=>item.date&&!Number.isNaN(item.date.getTime()))
+    .sort((a,b)=>a.date-b.date);
+}
+function shortDateFromDate(date){
+  return date.toLocaleDateString('en-IN',{day:'2-digit',month:'short'});
+}
+function leaveTotals(employee){
+  const l=employee.leave;
+  const keys=['annual','sick','wfh','comp'];
+  return keys.reduce((acc,k)=>{acc.total+=l[k].t; acc.used+=l[k].u; acc.left+=l[k].t-l[k].u; return acc;},{total:0,used:0,left:0});
+}
+function profileCompletion(employee){
+  const checks=[employee.profile?.photo,employee.profile?.dob,employee.profile?.hobbies,employee.role,employee.manager];
+  return Math.round((checks.filter(Boolean).length/checks.length)*100);
+}
+function employeeBadges(employee){
+  const pr=policyReadStats(employee);
+  const docs=(employee.documents||[]);
+  const gamePoints=Number(employee.gameProgress?.points)||0;
+  const wallPosts=(store.teamWall||[]).filter(p=>p.empId===employee.id).length;
+  return [
+    {title:'Policy Champion',icon:'ti-shield-check',earned:pr.total>0&&pr.read===pr.total,meta:`${pr.read}/${pr.total} policies`},
+    {title:'Profile Pro',icon:'ti-user-check',earned:profileCompletion(employee)>=80,meta:`${profileCompletion(employee)}% complete`},
+    {title:'Document Ready',icon:'ti-folder-check',earned:docs.length>0&&docs.every(d=>d.acknowledgedAt),meta:`${docs.filter(d=>d.acknowledgedAt).length}/${docs.length||0} acknowledged`},
+    {title:'Word Wizard',icon:'ti-trophy',earned:gamePoints>=100,meta:`${gamePoints} game points`},
+    {title:'Team Voice',icon:'ti-speakerphone',earned:wallPosts>0,meta:`${wallPosts} wall post${wallPosts===1?'':'s'}`}
+  ];
+}
+function currentMood(employee){
+  const week=new Date().toISOString().slice(0,10);
+  return (store.moodPulse||[]).find(m=>m.empId===employee.id&&m.week===week);
+}
+function leavePlannerSuggestion(employee){
+  const annualLeft=(employee.leave?.annual?.t||0)-(employee.leave?.annual?.u||0);
+  if(annualLeft>=5) return 'You can plan a full week off or split it into two long weekends.';
+  if(annualLeft>=2) return 'A short recharge break is available. Consider pairing with a weekend.';
+  return 'Annual leave is low. Use WFH or comp-off if applicable.';
+}
+function openEmployeePage(pg){
+  const item=[...document.querySelectorAll('#eSidebar .ni')].find(n=>n.getAttribute('onclick')?.includes(`'${pg}'`));
+  if(item) ePage(pg,item);
+}
+function renderEmployeeHome(){
+  const e=employeeById(currentUser?.id)||store.employees[0];
+  if(!e||!document.getElementById('pg-home')) return;
+  const pr=policyReadStats(e);
+  const totals=leaveTotals(e);
+  const mine=employeeQueries(e);
+  const openQ=mine.filter(q=>q.status!=='resolved').length;
+  const replies=mine.filter(q=>q.response).length;
+  const unread=unreadPolicies(e);
+  const score=Math.round(((pr.total?pr.read/pr.total:1)*40)+((openQ===0?1:0)*25)+((totals.left>0?1:0)*20)+((replies>0?1:0)*15));
+  document.getElementById('homeTitle').textContent=`Welcome, ${e.name.split(' ')[0]}`;
+  document.getElementById('homeSub').textContent=`${e.role||'Employee'} - ${e.dept||'General'}`;
+  document.getElementById('homeScore').textContent=`${score}%`;
+  const profileCard=document.getElementById('profileCard');
+  if(profileCard) profileCard.innerHTML=`<div class="profile-top">${avatarHtml(e,'av av-e profile-photo')}<div><div class="ri-name">${e.name}</div><div class="ri-meta">${e.email}</div></div></div><div class="profile-grid"><div><span>Department</span><strong>${e.dept}</strong></div><div><span>Role</span><strong>${e.role||'Employee'}</strong></div><div><span>Manager</span><strong>${e.manager||'HR'}</strong></div><div><span>Status</span><strong>${e.status}</strong></div><div><span>Date of birth</span><strong>${formatDob(e.profile?.dob)}</strong></div><div><span>Hobbies</span><strong>${e.profile?.hobbies||'Not added'}</strong></div></div><button class="btn sm profile-edit-btn" onclick="openEmployeeProfileEditor()"><i class="ti ti-pencil" aria-hidden="true"></i> Edit profile</button>`;
+  const homeStats=document.getElementById('homeStats');
+  if(homeStats) homeStats.innerHTML=`<div class="stat"><div class="stat-l">Leave balance</div><div class="stat-v">${totals.left}</div></div><div class="stat"><div class="stat-l">Policies read</div><div class="stat-v">${pr.read}/${pr.total}</div></div><div class="stat"><div class="stat-l">Open queries</div><div class="stat-v">${openQ}</div></div><div class="stat"><div class="stat-l">HR replies</div><div class="stat-v">${replies}</div></div>`;
+  const eventNotes=upcomingEvents().slice(0,2).map(ev=>({id:`event-${ev.id}`,icon:'ti-calendar-event',title:`Event: ${ev.title}`,meta:`${formatDateOnly(ev.date)} - ${ev.time||'Time pending'}`}));
+  const birthdayNotes=upcomingBirthdays(e).slice(0,2).map(item=>({id:`birthday-${item.employee.id}-${shortDateFromDate(item.date)}`,icon:'ti-cake',title:`Birthday: ${item.employee.name}`,meta:`${shortDateFromDate(item.date)} - ${item.employee.dept||'Team'}`}));
+  const newsNotes=latestNews().slice(0,2).map(item=>({id:`news-${item.id}`,icon:'ti-news',title:item.title,meta:`${item.tag||'News'} - ${formatDateOnly(item.date)}`}));
+  const allNotifications=[
+    ...newsNotes,
+    ...eventNotes,
+    ...birthdayNotes,
+    ...mine.filter(q=>q.response).slice(0,2).map(q=>({id:`reply-${q.id}-${q.resolvedAt||q.createdAt}`,icon:'ti-message-check',title:`HR replied: ${q.subject}`,meta:formatQueryTime(q.resolvedAt||q.createdAt)})),
+    ...unread.slice(0,3).map(p=>({id:`policy-${p.id}`,icon:'ti-file-alert',title:`Unread policy: ${p.name}`,meta:p.cat})),
+    ...mine.filter(q=>q.status!=='resolved').slice(0,2).map(q=>({id:`query-${q.id}-${q.status}`,icon:'ti-clock',title:`Query pending: ${q.subject}`,meta:formatQueryTime(q.createdAt)}))
+  ];
+  const notifications=allNotifications.filter(n=>!e.dismissedNotifications.includes(n.id)).slice(0,8);
+  window.visibleNotificationIds=notifications.map(n=>n.id);
+  window.allNotificationIds=allNotifications.map(n=>n.id);
+  const clearBtn=document.getElementById('clearNotifBtn');
+  if(clearBtn) clearBtn.disabled=!notifications.length;
+  document.getElementById('notificationList').innerHTML=notifications.length?notifications.map(n=>`<div class="notify-item"><i class="ti ${n.icon}"></i><div><div>${n.title}</div><span>${n.meta}</span></div></div>`).join(''):'<div class="empty-state">No pending notifications.</div>';
+  const homeNews=document.getElementById('homeNewsList');
+  if(homeNews){
+    const posts=latestNews().slice(0,3);
+    homeNews.innerHTML=posts.length?posts.map(item=>`<div class="news-post"><div class="news-post-top"><span class="news-tag">${item.tag||'News'}</span><span>${formatDateOnly(item.date)}</span></div><h3>${item.title}</h3><p>${item.body||''}</p></div>`).join(''):'<div class="empty-state">No company news has been posted yet.</div>';
+  }
+  const achievements=[
+    {done:pr.total&&pr.read===pr.total,title:'All policies acknowledged',meta:'Compliance ready'},
+    {done:openQ===0,title:'No pending HR queries',meta:'Inbox clear'},
+    {done:totals.left>0,title:'Leave plan updated',meta:`${totals.left} days available`},
+    {done:profileCompletion(e)>=80,title:'Profile completion',meta:`${profileCompletion(e)}% ready`}
+  ];
+  const achievementList=document.getElementById('achievementList');
+  if(achievementList) achievementList.innerHTML=achievements.map(a=>`<div class="achievement ${a.done?'done':''}"><i class="ti ${a.done?'ti-circle-check':'ti-circle'}"></i><div><div>${a.title}</div><span>${a.meta}</span></div></div>`).join('');
+  const homeTimeline=document.getElementById('homeTimeline');
+  if(homeTimeline) homeTimeline.innerHTML=mine.length?mine.slice(0,4).map(q=>`<div class="timeline-item"><span class="timeline-dot ${q.status==='resolved'?'done':''}"></span><div><div class="ri-name">${q.subject}</div><div class="ri-meta">${q.status==='resolved'?'Resolved':'Raised'} - ${formatQueryTime(q.resolvedAt||q.createdAt)}</div><div class="query-msg">${q.response||q.msg}</div></div></div>`).join(''):'<div class="empty-state">No queries yet.</div>';
+  renderLeaveCalendar(e);
+}
+window.clearNotifications=function(){
+  const e=employeeById(currentUser?.id);
+  if(!e){toast('Please sign in again');return;}
+  const ids=Array.isArray(window.allNotificationIds)?window.allNotificationIds:[];
+  if(!ids.length){toast('No notifications to clear');return;}
+  e.dismissedNotifications=[...new Set([...(e.dismissedNotifications||[]),...ids])];
+  saveStore();
+  renderEmployeeHome();
+  toast('Notifications cleared');
+};
+window.renderNewsPortal=function(){
+  const e=employeeById(currentUser?.id)||store.employees[0];
+  const eventList=document.getElementById('eventList');
+  const birthdayList=document.getElementById('birthdayList');
+  const newsList=document.getElementById('companyNewsList');
+  if(eventList){
+    const events=upcomingEvents();
+    eventList.innerHTML=events.length?events.map(ev=>`<div class="news-item event-item"><div class="event-date"><strong>${formatDateOnly(ev.date).slice(0,2)}</strong><span>${formatDateOnly(ev.date).slice(3,6)}</span></div><div><div class="ri-name">${ev.title}</div><div class="news-meta"><i class="ti ti-clock" aria-hidden="true"></i> ${ev.time||'Time pending'} <i class="ti ti-map-pin" aria-hidden="true"></i> ${ev.location||'Location pending'}</div><p>${ev.desc||'Details will be shared soon.'}</p></div></div>`).join(''):'<div class="empty-state">No special events announced yet.</div>';
+  }
+  if(birthdayList){
+    const birthdays=upcomingBirthdays(e);
+    birthdayList.innerHTML=birthdays.length?birthdays.map(item=>`<div class="news-item birthday-item">${avatarHtml(item.employee,'av av-e')}<div><div class="ri-name">${item.employee.name}</div><div class="news-meta">${item.employee.dept||'Team'} - ${shortDateFromDate(item.date)}</div><p>Wish ${item.employee.name.split(' ')[0]} on their birthday.</p></div></div>`).join(''):'<div class="empty-state">No colleague birthdays available. Employees can add DOB from Edit profile.</div>';
+  }
+  if(newsList){
+    const posts=latestNews();
+    newsList.innerHTML=posts.length?posts.map(item=>`<div class="news-post"><div class="news-post-top"><span class="news-tag">${item.tag||'News'}</span><span>${formatDateOnly(item.date)}</span></div><h3>${item.title}</h3><p>${item.body||''}</p><div class="reaction-row"><button class="btn sm" onclick="reactNews('${item.id}','like')"><i class="ti ti-thumb-up" aria-hidden="true"></i> ${(item.reactions?.like||[]).length}</button><button class="btn sm" onclick="reactNews('${item.id}','love')"><i class="ti ti-heart" aria-hidden="true"></i> ${(item.reactions?.love||[]).length}</button><button class="btn sm" onclick="reactNews('${item.id}','seen')"><i class="ti ti-check" aria-hidden="true"></i> ${(item.reactions?.seen||[]).length}</button></div></div>`).join(''):'<div class="empty-state">No company news has been posted yet.</div>';
+  }
+};
+window.reactNews=function(newsId,type){
+  const item=store.news.find(n=>n.id===newsId);
+  const empId=currentUser?.id;
+  if(!item||!empId) return;
+  item.reactions=item.reactions||{};
+  item.reactions[type]=item.reactions[type]||[];
+  if(item.reactions[type].includes(empId)) item.reactions[type]=item.reactions[type].filter(id=>id!==empId);
+  else item.reactions[type].push(empId);
+  saveStore();
+  renderNewsPortal();
+  renderEmployeeHome();
+};
+window.renderAdminDocuments=function(){
+  const empSelect=document.getElementById('docEmp');
+  const list=document.getElementById('adminDocList');
+  if(!empSelect||!list) return;
+  empSelect.innerHTML=store.employees.map(e=>`<option value="${e.id}">${e.name} - ${e.dept||'General'}</option>`).join('');
+  const rows=store.employees.flatMap(e=>(e.documents||[]).map(doc=>({...doc,employee:e}))).sort((a,b)=>new Date(b.uploadedAt)-new Date(a.uploadedAt));
+  list.innerHTML=rows.length?rows.map(doc=>`<div class="document-row"><div class="document-icon"><i class="ti ${docTypeIcon(doc.type)}" aria-hidden="true"></i></div><div><div class="ri-name">${doc.title}</div><div class="ri-meta">${doc.employee.name} - ${docTypeLabel(doc.type)} - ${formatQueryTime(doc.uploadedAt)}</div><div class="ri-meta">${doc.fileName||'Attached document'} - ${doc.acknowledgedAt?`Acknowledged ${formatQueryTime(doc.acknowledgedAt)}`:'Not acknowledged'}</div></div><div class="ri-right"><a class="btn sm" href="${doc.fileData}" download="${doc.fileName||doc.title}" target="_blank" rel="noopener"><i class="ti ti-download" aria-hidden="true"></i> Download</a><button class="btn sm danger" onclick="deleteEmployeeDocument('${doc.employee.id}','${doc.id}')"><i class="ti ti-trash" aria-hidden="true"></i></button></div></div>`).join(''):'<div class="empty-state">No employee documents uploaded yet.</div>';
+};
+window.addEmployeeDocument=async function(){
+  const empId=document.getElementById('docEmp')?.value;
+  const employee=employeeById(empId);
+  const type=document.getElementById('docType')?.value||'offer';
+  const title=document.getElementById('docTitle')?.value.trim()||docTypeLabel(type);
+  const file=document.getElementById('docFile')?.files[0];
+  if(!employee){toast('Select an employee');return;}
+  if(!file){toast('Upload a document file');return;}
+  if(file.size>3*1024*1024){toast('Document must be under 3 MB');return;}
+  const fileData=await fileToDataUrl(file);
+  employee.documents=employee.documents||[];
+  employee.documents.push({id:`doc-${Date.now()}`,type,title,fileName:file.name,fileData,uploadedAt:new Date().toISOString(),uploadedBy:currentUser?.name||'HR'});
+  document.getElementById('docTitle').value='';
+  document.getElementById('docFile').value='';
+  saveStore();
+  renderAdminDocuments();
+  toast('Document added');
+};
+window.deleteEmployeeDocument=function(empId,docId){
+  const employee=employeeById(empId);
+  if(!employee) return;
+  employee.documents=(employee.documents||[]).filter(doc=>doc.id!==docId);
+  saveStore();
+  renderAdminDocuments();
+  toast('Document removed');
+};
+window.renderEmployeeDocuments=function(){
+  const employee=employeeById(currentUser?.id)||store.employees[0];
+  const list=document.getElementById('employeeDocList');
+  if(!employee||!list) return;
+  employee.documents=employee.documents||[];
+  list.innerHTML=DOCUMENT_TYPES.map(type=>{
+    const docs=employee.documents.filter(doc=>doc.type===type.key).sort((a,b)=>new Date(b.uploadedAt)-new Date(a.uploadedAt));
+    return `<div class="card document-card"><div class="card-title" style="margin-bottom:.8rem"><i class="ti ${type.icon}" aria-hidden="true"></i> ${type.label}</div>${docs.length?docs.map(doc=>`<div class="document-row compact"><div><div class="ri-name">${doc.title}</div><div class="ri-meta">${doc.fileName||'Attached document'} - ${formatQueryTime(doc.uploadedAt)}</div><div class="ri-meta">${doc.acknowledgedAt?`Acknowledged ${formatQueryTime(doc.acknowledgedAt)}`:'Awaiting acknowledgement'}</div></div><div class="table-actions"><a class="btn sm" href="${doc.fileData}" download="${doc.fileName||doc.title}" target="_blank" rel="noopener"><i class="ti ti-download" aria-hidden="true"></i> Download</a><button class="btn sm ${doc.acknowledgedAt?'':'pri'}" onclick="acknowledgeDocument('${doc.id}')"><i class="ti ti-check" aria-hidden="true"></i> ${doc.acknowledgedAt?'Acknowledged':'Acknowledge'}</button></div></div>`).join(''):'<div class="empty-state">No documents uploaded yet.</div>'}</div>`;
+  }).join('');
+};
+window.acknowledgeDocument=function(docId){
+  const employee=employeeById(currentUser?.id);
+  const doc=employee?.documents?.find(d=>d.id===docId);
+  if(!doc) return;
+  doc.acknowledgedAt=doc.acknowledgedAt||new Date().toISOString();
+  saveStore();
+  renderEmployeeDocuments();
+  renderEmployeeHome();
+  toast('Document acknowledged');
+};
+window.renderEngage=function(){
+  const employee=employeeById(currentUser?.id)||store.employees[0];
+  if(!employee) return;
+  const badges=employeeBadges(employee);
+  const badgeList=document.getElementById('badgeList');
+  if(badgeList) badgeList.innerHTML=`<div class="badge-grid">${badges.map(b=>`<div class="engage-badge ${b.earned?'earned':''}"><i class="ti ${b.icon}" aria-hidden="true"></i><strong>${b.title}</strong><span>${b.meta}</span></div>`).join('')}</div>`;
+  const mood=currentMood(employee);
+  const moodBox=document.getElementById('moodPulseBox');
+  if(moodBox) moodBox.innerHTML=`<div class="mood-buttons">${['Great','Good','Okay','Stressed'].map(m=>`<button class="btn sm ${mood?.mood===m?'pri':''}" onclick="submitMood('${m}')">${m}</button>`).join('')}</div><div class="ri-meta" style="margin-top:8px">${mood?`You checked in as ${mood.mood} on ${formatQueryTime(mood.createdAt)}`:'Choose how you feel this week.'}</div>`;
+  const quizBox=document.getElementById('learningQuizBox');
+  const done=new Set(employee.learningCompletions||[]);
+  const quiz=ENGAGE_QUIZ.find(q=>!done.has(q.id))||ENGAGE_QUIZ[0];
+  if(quizBox) quizBox.innerHTML=`<div class="ri-name">${quiz.title}</div><p class="query-msg">${quiz.question}</p><div class="quiz-options">${quiz.options.map((opt,i)=>`<button class="btn sm" onclick="answerQuiz('${quiz.id}',${i})">${opt}</button>`).join('')}</div><div class="ri-meta" style="margin-top:8px">${done.size}/${ENGAGE_QUIZ.length} lessons completed</div>`;
+  const planner=document.getElementById('leavePlannerBox');
+  if(planner) planner.innerHTML=`<div class="planner-box"><strong>${leavePlannerSuggestion(employee)}</strong><span>Annual left: ${(employee.leave.annual.t-employee.leave.annual.u)} days</span><button class="btn sm" onclick="openEmployeePage('myLeaves')"><i class="ti ti-calendar-plus" aria-hidden="true"></i> Apply leave</button></div>`;
+  renderTeamWall();
+};
+window.submitMood=function(mood){
+  const employee=employeeById(currentUser?.id);
+  if(!employee) return;
+  const week=new Date().toISOString().slice(0,10);
+  store.moodPulse=store.moodPulse||[];
+  const existing=store.moodPulse.find(m=>m.empId===employee.id&&m.week===week);
+  if(existing){existing.mood=mood;existing.createdAt=new Date().toISOString();}
+  else store.moodPulse.push({id:`mood-${Date.now()}`,empId:employee.id,emp:employee.name,week,mood,createdAt:new Date().toISOString()});
+  saveStore();
+  renderEngage();
+  toast('Mood pulse saved');
+};
+window.answerQuiz=function(quizId,choice){
+  const employee=employeeById(currentUser?.id);
+  const quiz=ENGAGE_QUIZ.find(q=>q.id===quizId);
+  if(!employee||!quiz) return;
+  if(choice!==quiz.answer){toast('Try again. Read the option carefully.');return;}
+  employee.learningCompletions=[...new Set([...(employee.learningCompletions||[]),quizId])];
+  saveStore();
+  renderEngage();
+  renderEmployeeHome();
+  toast('Lesson completed');
+};
+window.addWallPost=function(){
+  const employee=employeeById(currentUser?.id);
+  const input=document.getElementById('wallMsg');
+  const msg=input?.value.trim();
+  if(!employee||!msg){toast('Write a team wall message');return;}
+  store.teamWall=store.teamWall||[];
+  store.teamWall.unshift({id:`wall-${Date.now()}`,empId:employee.id,emp:employee.name,tag:document.getElementById('wallTag')?.value||'Shoutout',msg,createdAt:new Date().toISOString(),likes:[]});
+  input.value='';
+  saveStore();
+  renderEngage();
+  toast('Posted on team wall');
+};
+window.likeWallPost=function(id){
+  const post=(store.teamWall||[]).find(p=>p.id===id);
+  const empId=currentUser?.id;
+  if(!post||!empId) return;
+  post.likes=post.likes||[];
+  post.likes=post.likes.includes(empId)?post.likes.filter(x=>x!==empId):[...post.likes,empId];
+  saveStore();
+  renderTeamWall();
+};
+function renderTeamWall(){
+  const list=document.getElementById('teamWallList');
+  if(!list) return;
+  const posts=(store.teamWall||[]).slice(0,8);
+  list.innerHTML=posts.length?posts.map(p=>`<div class="wall-post"><div><span class="news-tag">${p.tag}</span><strong>${p.emp}</strong><span>${formatQueryTime(p.createdAt)}</span></div><p>${p.msg}</p><button class="btn sm" onclick="likeWallPost('${p.id}')"><i class="ti ti-heart" aria-hidden="true"></i> ${(p.likes||[]).length}</button></div>`).join(''):'<div class="empty-state">No team wall posts yet.</div>';
+}
+window.renderAnnouncements=function(){
+  const eventList=document.getElementById('adminEventList');
+  const newsList=document.getElementById('adminNewsList');
+  if(eventList){
+    const events=sortedEvents();
+    eventList.innerHTML=events.length?events.map(ev=>`<div class="row-item policy-row"><div><div class="ri-name">${ev.title}</div><div class="ri-meta">${formatDateOnly(ev.date)} - ${ev.time||'Time pending'} - ${ev.location||'Location pending'}</div><div class="query-msg">${ev.desc||'No description added.'}</div></div><button class="btn sm danger" title="Delete event" onclick="deleteCompanyEvent('${ev.id}')"><i class="ti ti-trash" aria-hidden="true"></i></button></div>`).join(''):'<div class="empty-state">No special events published yet.</div>';
+  }
+  if(newsList){
+    const posts=latestNews();
+    newsList.innerHTML=posts.length?posts.map(item=>`<div class="row-item policy-row"><div><div class="ri-name">${item.title}</div><div class="ri-meta">${item.tag||'News'} - ${formatDateOnly(item.date)} - Likes ${(item.reactions?.like||[]).length}, Loves ${(item.reactions?.love||[]).length}, Seen ${(item.reactions?.seen||[]).length}</div><div class="query-msg">${item.body||'No post text added.'}</div></div><button class="btn sm danger" title="Delete news" onclick="deleteCompanyNews('${item.id}')"><i class="ti ti-trash" aria-hidden="true"></i></button></div>`).join(''):'<div class="empty-state">No news posts published yet.</div>';
+  }
+};
+window.addCompanyEvent=function(){
+  const title=document.getElementById('eventTitle').value.trim();
+  const date=document.getElementById('eventDate').value;
+  if(!title||!date){toast('Enter event title and date');return;}
+  store.events.push({
+    id:`evt-${Date.now()}`,
+    title,
+    date,
+    time:document.getElementById('eventTime').value.trim()||'Time pending',
+    location:document.getElementById('eventLocation').value.trim()||'Location pending',
+    desc:document.getElementById('eventDesc').value.trim()
+  });
+  ['eventTitle','eventDate','eventTime','eventLocation','eventDesc'].forEach(id=>document.getElementById(id).value='');
+  saveStore();
+  renderAnnouncements();
+  if(document.getElementById('pg-news')?.classList.contains('act')) renderNewsPortal();
+  toast('Event notification published');
+};
+window.addCompanyNews=function(){
+  const title=document.getElementById('newsTitle').value.trim();
+  const body=document.getElementById('newsBody').value.trim();
+  if(!title||!body){toast('Enter news headline and post');return;}
+  store.news.push({
+    id:`news-${Date.now()}`,
+    title,
+    date:document.getElementById('newsDate').value||new Date().toISOString().slice(0,10),
+    tag:document.getElementById('newsTag').value.trim()||'News',
+    body
+  });
+  ['newsTitle','newsDate','newsTag','newsBody'].forEach(id=>document.getElementById(id).value='');
+  saveStore();
+  renderAnnouncements();
+  if(document.getElementById('pg-news')?.classList.contains('act')) renderNewsPortal();
+  toast('News post published');
+};
+window.deleteCompanyEvent=function(id){
+  store.events=store.events.filter(ev=>ev.id!==id);
+  saveStore();
+  renderAnnouncements();
+  toast('Event removed');
+};
+window.deleteCompanyNews=function(id){
+  store.news=store.news.filter(item=>item.id!==id);
+  saveStore();
+  renderAnnouncements();
+  toast('News removed');
+};
+function renderLeaveCalendar(e){
+  const el=document.getElementById('leaveCalendar');
+  if(!el) return;
+  const l=e.leave;
+  const cells=[
+    ['Annual',l.annual.u,l.annual.t,'#534AB7'],
+    ['Sick',l.sick.u,l.sick.t,'#1D9E75'],
+    ['WFH',l.wfh.u,l.wfh.t,'#BA7517'],
+    ['Comp-off',l.comp.u,l.comp.t,'#D4537E']
+  ];
+  el.innerHTML=`<div class="calendar-grid">${cells.map(([label,used,total,color])=>`<div class="calendar-cell"><span>${label}</span><strong style="color:${color}">${used}</strong><small>${total-used} left</small></div>`).join('')}</div><div class="calendar-note">Used leave days by category for the current year.</div>`;
+}
 window.togglePolicyFormat=function(){
   const format=document.getElementById('pFormat')?.value||'text';
   document.getElementById('pTextWrap').style.display=format==='text'?'block':'none';
@@ -446,6 +881,86 @@ function fileToDataUrl(file){
     reader.readAsDataURL(file);
   });
 }
+function resetProfileCropEditor(){
+  profileCropState={src:'',x:0,y:0,zoom:1,rotation:0,cropped:''};
+  const editor=document.getElementById('profileCropEditor');
+  const img=document.getElementById('profileCropImage');
+  const zoom=document.getElementById('profileZoom');
+  if(editor) editor.style.display='none';
+  if(img) img.removeAttribute('src');
+  if(zoom) zoom.value='1';
+}
+function updateProfileCropTransform(){
+  const img=document.getElementById('profileCropImage');
+  if(!img) return;
+  img.style.transform=`translate(calc(-50% + ${profileCropState.x}px), calc(-50% + ${profileCropState.y}px)) scale(${profileCropState.zoom}) rotate(${profileCropState.rotation}deg)`;
+}
+window.loadProfileCrop=async function(event){
+  const file=event.target.files[0];
+  if(!file){resetProfileCropEditor();return;}
+  if(!['image/png','image/jpeg','image/webp'].includes(file.type)){
+    toast('Use a PNG, JPG, or WEBP image');
+    event.target.value='';
+    resetProfileCropEditor();
+    return;
+  }
+  if(file.size>1024*1024){
+    toast('Profile picture must be under 1 MB');
+    event.target.value='';
+    resetProfileCropEditor();
+    return;
+  }
+  const src=await fileToDataUrl(file);
+  profileCropState={src,x:0,y:0,zoom:1,rotation:0,cropped:''};
+  const img=document.getElementById('profileCropImage');
+  document.getElementById('profileCropEditor').style.display='block';
+  document.getElementById('profileZoom').value='1';
+  img.src=src;
+  updateProfileCropTransform();
+  document.getElementById('profilePreview').innerHTML='<span>Adjust the photo, then click Apply crop.</span>';
+};
+window.setProfileZoom=function(value){
+  profileCropState.zoom=Number(value)||1;
+  profileCropState.cropped='';
+  updateProfileCropTransform();
+};
+window.nudgeProfileCrop=function(dx,dy){
+  profileCropState.x+=dx;
+  profileCropState.y+=dy;
+  profileCropState.cropped='';
+  updateProfileCropTransform();
+};
+window.rotateProfileCrop=function(deg){
+  profileCropState.rotation=(profileCropState.rotation+deg)%360;
+  profileCropState.cropped='';
+  updateProfileCropTransform();
+};
+function createProfileCropDataUrl(){
+  const img=document.getElementById('profileCropImage');
+  const frame=document.getElementById('profileCropFrame');
+  if(!img?.src||!frame) return '';
+  const out=512;
+  const frameSize=frame.clientWidth||180;
+  const canvas=document.createElement('canvas');
+  canvas.width=out;
+  canvas.height=out;
+  const ctx=canvas.getContext('2d');
+  ctx.fillStyle='#fff';
+  ctx.fillRect(0,0,out,out);
+  const scaleToCover=Math.max(out/img.naturalWidth,out/img.naturalHeight)*profileCropState.zoom;
+  const offsetScale=out/frameSize;
+  ctx.translate(out/2+profileCropState.x*offsetScale,out/2+profileCropState.y*offsetScale);
+  ctx.rotate(profileCropState.rotation*Math.PI/180);
+  ctx.drawImage(img,-img.naturalWidth*scaleToCover/2,-img.naturalHeight*scaleToCover/2,img.naturalWidth*scaleToCover,img.naturalHeight*scaleToCover);
+  return canvas.toDataURL('image/jpeg',0.9);
+}
+window.applyProfileCrop=function(){
+  if(!profileCropState.src){toast('Choose a photo first');return;}
+  profileCropState.cropped=createProfileCropDataUrl();
+  if(!profileCropState.cropped){toast('Could not crop this image');return;}
+  document.getElementById('profilePreview').innerHTML=`<img src="${profileCropState.cropped}" alt="Cropped profile picture"><span>Cropped photo ready.</span>`;
+  toast('Crop applied');
+};
 function resetPolicyForm(){
   ['pN','pDs'].forEach(id=>document.getElementById(id).value='');
   const pdf=document.getElementById('pPdf');
@@ -453,6 +968,60 @@ function resetPolicyForm(){
   document.getElementById('pFormat').value='text';
   togglePolicyFormat();
 }
+window.openEmployeeProfileDetails=function(){
+  const employee=employeeById(currentUser?.id);
+  if(!employee){toast('Please sign in again');return;}
+  const pr=policyReadStats(employee);
+  const totals=leaveTotals(employee);
+  const detail=document.getElementById('profileDetailBody');
+  detail.innerHTML=`<div class="profile-detail-head">${avatarHtml(employee,'av av-e profile-detail-photo')}<div><div class="ri-name">${employee.name}</div><div class="ri-meta">${employee.email}</div></div></div>
+    <div class="profile-detail-grid">
+      <div><span>Department</span><strong>${employee.dept||'General'}</strong></div>
+      <div><span>Role</span><strong>${employee.role||'Employee'}</strong></div>
+      <div><span>Manager</span><strong>${employee.manager||'HR'}</strong></div>
+      <div><span>Status</span><strong>${employee.status||'Active'}</strong></div>
+      <div><span>Date of birth</span><strong>${formatDob(employee.profile?.dob)}</strong></div>
+      <div><span>Hobbies</span><strong>${employee.profile?.hobbies||'Not added'}</strong></div>
+      <div><span>Leave balance</span><strong>${totals.left} days left</strong></div>
+      <div><span>Policies read</span><strong>${pr.read}/${pr.total}</strong></div>
+    </div>
+    <div class="hint-box profile-lock-note"><i class="ti ti-lock" aria-hidden="true"></i> HR-managed details are read-only. You can edit only date of birth, profile picture, and hobbies.</div>`;
+  openM('mProfileView');
+};
+window.openProfileEditFromDetails=function(){
+  closeM('mProfileView');
+  openEmployeeProfileEditor();
+};
+window.openEmployeeProfileEditor=function(){
+  const employee=employeeById(currentUser?.id);
+  if(!employee){toast('Please sign in again');return;}
+  document.getElementById('profileDob').value=employee.profile?.dob||'';
+  document.getElementById('profileHobbies').value=employee.profile?.hobbies||'';
+  document.getElementById('profilePic').value='';
+  resetProfileCropEditor();
+  document.getElementById('profilePreview').innerHTML=employee.profile?.photo?`<img src="${employee.profile.photo}" alt="Current profile picture">`:'No profile picture selected';
+  openM('mProfile');
+};
+window.saveEmployeeProfile=async function(){
+  const employee=employeeById(currentUser?.id);
+  if(!employee){toast('Please sign in again');return;}
+  employee.profile=employee.profile||{};
+  employee.profile.dob=document.getElementById('profileDob').value;
+  employee.profile.hobbies=document.getElementById('profileHobbies').value.trim();
+  if(profileCropState.src){
+    employee.profile.photo=profileCropState.cropped||createProfileCropDataUrl();
+  }
+  saveStore();
+  currentUser={...employee,portal:'employee'};
+  const avatar=document.getElementById('empAvatar');
+  if(avatar){
+    avatar.outerHTML=avatarHtml(employee,'av av-e');
+    document.querySelector('#s-employee .topbar .av, #s-employee .topbar .avatar-img').id='empAvatar';
+  }
+  closeM('mProfile');
+  renderEmployeeHome();
+  toast('Profile updated');
+};
 
 function enhanceUI(){
   applyCompanyBranding();
@@ -533,9 +1102,10 @@ function enterPortal(){
     document.getElementById('hrTopName').textContent=currentUser.name;
     renderPolicies();renderQueries();
   }else{
-    document.getElementById('empAvatar').textContent=initials(currentUser.name);
+    document.getElementById('empAvatar').outerHTML=avatarHtml(employeeById(currentUser.id)||currentUser,'av av-e');
+    document.querySelector('#s-employee .topbar .av, #s-employee .topbar .avatar-img').id='empAvatar';
     document.getElementById('empTopName').textContent=currentUser.name;
-    updateBars();initChat();
+    updateBars();initChat();renderEmployeeHome();
   }
 }
 
@@ -648,8 +1218,8 @@ window.renderEmpTable=function(){
   document.getElementById('empActive').textContent=store.employees.filter(e=>e.status==='Active').length;
   document.getElementById('hrTotal').textContent=store.hrs.length;
   document.getElementById('empOpenQ').textContent=store.queries.filter(q=>q.status!=='resolved').length;
-  document.getElementById('employeeNames').innerHTML=store.employees.map(e=>{const pr=policyReadStats(e);return `<div class="row-item policy-row"><div><div class="ri-name">${e.name}</div><div class="ri-meta">${e.email} - ${e.dept} - Policy read ${pr.read}/${pr.total}</div>${policyReadDetails(e)}</div><div class="ri-right"><span class="badge ${pr.total&&pr.read===pr.total?'b-active':'b-pending'}">${pr.total&&pr.read===pr.total?'All read':'Pending'}</span><span class="badge ${e.status==='Active'?'b-active':'b-archived'}">${e.status}</span></div></div>`;}).join('');
-  document.getElementById('eTable').innerHTML=`<thead><tr><th>Name</th><th>Company email</th><th>Dept</th><th>Role</th><th>Policy read</th><th>Annual left</th><th>Sick left</th><th>WFH left</th><th>Password</th><th>Status</th><th>Action</th></tr></thead><tbody>${store.employees.map(e=>{const l=e.leave, pr=policyReadStats(e);return `<tr><td style="font-weight:500">${e.name}</td><td>${e.email}</td><td style="color:var(--color-text-secondary)">${e.dept}</td><td>${e.role||'-'}</td><td><span class="badge ${pr.total&&pr.read===pr.total?'b-active':'b-pending'}">${pr.read}/${pr.total}</span></td><td>${l.annual.t-l.annual.u}</td><td>${l.sick.t-l.sick.u}</td><td>${l.wfh.t-l.wfh.u}</td><td><span class="badge ${e.mustChangePassword?'b-pending':'b-active'}">${e.mustChangePassword?'Reset required':'Private'}</span></td><td><span class="badge ${e.status==='Active'?'b-active':'b-archived'}">${e.status}</span></td><td><button class="btn sm" onclick="toggleEmployee('${e.id}')">${e.status==='Active'?'Deactivate':'Activate'}</button></td></tr>`;}).join('')}</tbody>`;
+  document.getElementById('employeeNames').innerHTML=store.employees.map(e=>{const pr=policyReadStats(e);return `<div class="row-item policy-row"><div><div class="ri-name">${e.name}</div><div class="ri-meta">${e.email} - ${e.dept} - Policy read ${pr.read}/${pr.total}</div>${policyReadDetails(e)}</div><div class="ri-right"><span class="badge ${pr.total&&pr.read===pr.total?'b-active':'b-pending'}">${pr.total&&pr.read===pr.total?'All read':'Pending'}</span><span class="badge ${e.status==='Active'?'b-active':'b-archived'}">${e.status}</span><button class="btn sm danger" onclick="deleteEmployee('${e.id}')" title="Delete employee"><i class="ti ti-trash" aria-hidden="true"></i> Delete</button></div></div>`;}).join('');
+  document.getElementById('eTable').innerHTML=`<thead><tr><th>Name</th><th>Company email</th><th>Dept</th><th>Role</th><th>Policy read</th><th>Annual left</th><th>Sick left</th><th>WFH left</th><th>Password</th><th>Status</th><th>Action</th></tr></thead><tbody>${store.employees.map(e=>{const l=e.leave, pr=policyReadStats(e);return `<tr><td style="font-weight:500">${e.name}</td><td>${e.email}</td><td style="color:var(--color-text-secondary)">${e.dept}</td><td>${e.role||'-'}</td><td><span class="badge ${pr.total&&pr.read===pr.total?'b-active':'b-pending'}">${pr.read}/${pr.total}</span></td><td>${l.annual.t-l.annual.u}</td><td>${l.sick.t-l.sick.u}</td><td>${l.wfh.t-l.wfh.u}</td><td><span class="badge ${e.mustChangePassword?'b-pending':'b-active'}">${e.mustChangePassword?'Reset required':'Private'}</span></td><td><span class="badge ${e.status==='Active'?'b-active':'b-archived'}">${e.status}</span></td><td><div class="table-actions"><button class="btn sm" onclick="toggleEmployee('${e.id}')">${e.status==='Active'?'Deactivate':'Activate'}</button><button class="btn sm danger" onclick="deleteEmployee('${e.id}')" title="Delete employee"><i class="ti ti-trash" aria-hidden="true"></i></button></div></td></tr>`;}).join('')}</tbody>`;
 };
 
 window.addEmployee=async function(){
@@ -658,7 +1228,7 @@ window.addEmployee=async function(){
   if(!name||!isEmail(email)){toast('Enter a valid employee name and email');return;}
   if(tempPass.length<4){toast('Temporary password must be at least 4 characters');return;}
   if([...store.employees,...store.hrs].some(u=>u.email.toLowerCase()===email)){toast('Email already exists');return;}
-  const employee={id:`emp-${store.nextEmployeeId++}`,name,email,password:tempPass,mustChangePassword:true,dept:document.getElementById('empDept').value.trim()||'General',role:document.getElementById('empRole').value.trim()||'Employee',status:'Active',manager:currentUser?.name||'HR',policyReads:{},leave:{annual:{u:0,t:18},sick:{u:0,t:8},wfh:{u:0,t:12},comp:{u:0,t:3}}};
+  const employee={id:`emp-${store.nextEmployeeId++}`,name,email,password:tempPass,mustChangePassword:true,dept:document.getElementById('empDept').value.trim()||'General',role:document.getElementById('empRole').value.trim()||'Employee',status:'Active',manager:currentUser?.name||'HR',policyReads:{},dismissedNotifications:[],documents:[],gameProgress:null,leave:{annual:{u:0,t:18},sick:{u:0,t:8},wfh:{u:0,t:12},comp:{u:0,t:3}}};
   store.employees.push(employee);
   try{
     saveStore();
@@ -697,6 +1267,24 @@ window.toggleEmployee=function(id){
   saveStore();renderEmpTable();toast(`${e.name} is now ${e.status}`);
 };
 
+window.deleteEmployee=function(id){
+  const employee=employeeById(id);
+  if(!employee) return;
+  const ok=confirm(`Delete ${employee.name} permanently?\n\nTheir login and leave balance will be removed. Existing HR queries will be kept for record history.`);
+  if(!ok) return;
+  store.employees=store.employees.filter(e=>e.id!==id);
+  store.queries.forEach(q=>{
+    if(q.empId===id){
+      q.empId=null;
+      q.emp=`${employee.name} (deleted)`;
+    }
+  });
+  saveStore();
+  renderEmpTable();
+  if(document.getElementById('ovEmp')) document.getElementById('ovEmp').textContent=store.employees.length;
+  toast(`${employee.name} deleted`);
+};
+
 window.renderOverview=function(){
   document.getElementById('ovEmp').textContent=store.employees.length;
   document.getElementById('ovAct').textContent=store.policies.filter(p=>p.status==='Active').length;
@@ -732,7 +1320,7 @@ window.applyLeave=function(){
   if(b.u+days>b.t){toast(`Not enough ${type} balance`);return;}
   b.u+=days;
   store.queries.push({id:store.nextQueryId++,empId:e.id,emp:e.name,category:'Leave',subject:`${type} leave - ${days} day(s)`,msg:document.getElementById('lvR').value.trim()||`Applied for ${days} day(s) of ${type} leave.`,status:'pending',response:null,createdAt:new Date().toISOString()});
-  saveStore();updateBars();document.getElementById('lvR').value='';toast(`${days} day(s) of ${type} leave submitted`);
+  saveStore();updateBars();renderEmployeeHome();document.getElementById('lvR').value='';toast(`${days} day(s) of ${type} leave submitted`);
 };
 
 window.renderMyQueries=function(){
@@ -758,6 +1346,7 @@ window.raiseEmployeeQuery=function(){
   document.getElementById('rqSubject').value='';
   document.getElementById('rqMsg').value='';
   renderMyQueries();
+  renderEmployeeHome();
   toast('Query submitted to HR');
 };
 
@@ -787,6 +1376,7 @@ window.togglePolicyRead=function(policyId,checked){
   else delete employee.policyReads[policyId];
   saveStore();
   renderEPolicies();
+  renderEmployeeHome();
   toast(checked?'Policy marked as read':'Policy acknowledgement removed');
 };
 
@@ -827,6 +1417,14 @@ window.sendChat=async function(){
 
 function localReply(msg){
   const e=employeeById(currentUser?.id)||store.employees[0], l=e.leave, m=msg.toLowerCase();
+  if(m.includes('unread')) {
+    const unread=unreadPolicies(e);
+    return unread.length?`You still need to read ${unread.length} active policy/policies: ${unread.map(p=>p.name).join(', ')}.`:'You have acknowledged all active policies.';
+  }
+  if(m.includes('pending action')||m.includes('action is pending')){
+    const unread=unreadPolicies(e).length, open=employeeQueries(e).filter(q=>q.status!=='resolved').length;
+    return `Pending actions: ${unread} unread policies and ${open} open HR query/query(s).`;
+  }
   if(m.includes('annual')) return `You have ${l.annual.t-l.annual.u} annual leave day(s) left out of ${l.annual.t}. The Annual Leave Policy allows up to 5 unused days to be carried forward.`;
   if(m.includes('sick')) return `You have ${l.sick.t-l.sick.u} sick leave day(s) left. A medical certificate is required only for 3 or more consecutive sick days.`;
   if(m.includes('wfh')||m.includes('work from home')) return `You have ${l.wfh.t-l.wfh.u} WFH day(s) left. The active WFH policy allows up to 3 days per week with manager approval.`;
@@ -834,6 +1432,492 @@ function localReply(msg){
   if(m.includes('benefit')) return 'Current active benefit details are listed under active policies. HR has a maternity and paternity policy in draft, so ask HR before relying on it.';
   return `I found ${store.policies.filter(p=>p.status==='Active').length} active policies and your live balances: annual ${l.annual.t-l.annual.u}, sick ${l.sick.t-l.sick.u}, WFH ${l.wfh.t-l.wfh.u}, comp-off ${l.comp.t-l.comp.u}. For requests, use the My leaves tab.`;
 }
+
+/*game*/
+let currentQuestion = 0;
+
+let scores = {
+    empathy: 0,
+    strategy: 0,
+    innovation: 0,
+    speed: 0
+};
+
+const scenarios = [
+
+{
+title:"Employee Leave Request",
+question:"Your top performer asks for 2 weeks leave during a critical project.",
+choices:[
+{
+text:"Reject the leave",
+effects:{strategy:10,speed:10}
+},
+{
+text:"Approve immediately",
+effects:{empathy:15}
+},
+{
+text:"Discuss alternative dates",
+effects:{strategy:10,empathy:10}
+}
+]
+},
+
+{
+title:"Remote Work Policy",
+question:"Employees want more flexibility.",
+choices:[
+{
+text:"Keep existing rules",
+effects:{strategy:10}
+},
+{
+text:"Allow hybrid work",
+effects:{innovation:15,empathy:10}
+},
+{
+text:"Allow complete freedom",
+effects:{innovation:20}
+}
+]
+},
+
+{
+title:"Team Conflict",
+question:"Two team members are constantly arguing.",
+choices:[
+{
+text:"Ignore it",
+effects:{speed:10}
+},
+{
+text:"Conduct mediation",
+effects:{empathy:15}
+},
+{
+text:"Reassign responsibilities",
+effects:{strategy:15}
+}
+]
+},
+
+{
+title:"Budget Cut",
+question:"Budget reduced by 20%.",
+choices:[
+{
+text:"Lay off employees",
+effects:{strategy:15}
+},
+{
+text:"Reduce expenses elsewhere",
+effects:{innovation:15,empathy:10}
+},
+{
+text:"Freeze hiring",
+effects:{strategy:10}
+}
+]
+},
+
+{
+title:"New Technology",
+question:"A new AI tool can automate tasks.",
+choices:[
+{
+text:"Ignore it",
+effects:{speed:10}
+},
+{
+text:"Pilot test it",
+effects:{innovation:20}
+},
+{
+text:"Deploy immediately",
+effects:{innovation:15,speed:10}
+}
+]
+}
+
+];
+function startMaze(){
+
+currentQuestion = 0;
+
+scores = {
+    empathy:0,
+    strategy:0,
+    innovation:0,
+    speed:0
+};
+
+showQuestion();
+}
+
+function showQuestion(){
+
+const q = scenarios[currentQuestion];
+
+let html = `
+<h2>${q.title}</h2>
+<p style="margin-bottom:20px">
+${q.question}
+</p>
+`;
+
+q.choices.forEach((choice,index)=>{
+
+html += `
+<button
+class="btn"
+style="display:block;width:100%;margin-bottom:10px"
+onclick="chooseOption(${index})"
+>
+${choice.text}
+</button>
+`;
+
+});
+
+document.getElementById("gameArea").innerHTML = html;
+}
+
+function chooseOption(index){
+
+const choice =
+scenarios[currentQuestion].choices[index];
+
+for(let key in choice.effects){
+
+scores[key] += choice.effects[key];
+
+}
+
+currentQuestion++;
+
+if(currentQuestion >= scenarios.length){
+
+showResult();
+
+}else{
+
+showQuestion();
+
+}
+}
+function showResult(){
+
+const maxTrait =
+Object.keys(scores).reduce((a,b)=>
+scores[a] > scores[b] ? a : b
+);
+
+let profile = "";
+
+switch(maxTrait){
+
+case "empathy":
+profile =
+"🤝 The People Leader";
+break;
+
+case "strategy":
+profile =
+"📊 The Strategic Thinker";
+break;
+
+case "innovation":
+profile =
+"🚀 The Visionary Innovator";
+break;
+
+case "speed":
+profile =
+"⚡ The Fast Decision Maker";
+break;
+
+}
+
+document.getElementById("gameArea").innerHTML = `
+
+<h2>🎉 Your Leadership Profile</h2>
+
+<div style="text-align:left;margin-top:20px">
+
+<p><b>Empathy:</b> ${scores.empathy}</p>
+
+<p><b>Strategy:</b> ${scores.strategy}</p>
+
+<p><b>Innovation:</b> ${scores.innovation}</p>
+
+<p><b>Decision Speed:</b> ${scores.speed}</p>
+
+</div>
+
+<h3 style="margin-top:20px">
+${profile}
+</h3>
+
+<p style="margin-top:15px">
+Your decisions reveal how you approach
+leadership and workplace challenges.
+</p>
+
+<button
+class="btn pri"
+onclick="startMaze()"
+>
+Play Again
+</button>
+
+`;
+}
+const wordWonderLevels=[
+  {theme:'Team basics',letters:['T','E','A','M'],words:['TEAM','MEAT','MATE','TAME','TEA','EAT','ATE','MET']},
+  {theme:'Leave desk',letters:['L','E','A','V','E'],words:['LEAVE','VEAL','VALE','ALE','EEL','EVE']},
+  {theme:'Policy room',letters:['P','O','L','I','C','Y'],words:['POLICY','COPY','CLIP','OIL','ICY']},
+  {theme:'Work mode',letters:['W','O','R','K'],words:['WORK','ROW','WOK']},
+  {theme:'Growth track',letters:['G','R','O','W','T','H'],words:['GROWTH','GROW','WORTH','ROW','HOT','TOW']},
+  {theme:'Payroll desk',letters:['P','A','Y','R','O','L','L'],words:['PAYROLL','PAY','ROLL','PLAY','LOYAL','RAY','LAY']},
+  {theme:'Culture club',letters:['C','U','L','T','U','R','E'],words:['CULTURE','CURE','TRUE','RULE','CUTE','LURE']},
+  {theme:'Talent room',letters:['T','A','L','E','N','T'],words:['TALENT','LATE','LEAN','TENT','ANTE','LANE','TEAL']},
+  {theme:'Benefits bay',letters:['B','E','N','E','F','I','T'],words:['BENEFIT','FIT','NET','TEN','BITE','FINE','BEET']},
+  {theme:'Office flow',letters:['O','F','F','I','C','E'],words:['OFFICE','ICE','OFF','FOE','FIFE','COIF']}
+];
+let wordWonderLevel=0;
+let wordWonderFound=[];
+let wordWonderPoints=0;
+let wordWonderLetters=[];
+let wordWonderStarted=false;
+
+function getWordWonderLevel(){
+  const base=wordWonderLevels[wordWonderLevel % wordWonderLevels.length];
+  const cycle=Math.floor(wordWonderLevel / wordWonderLevels.length);
+  return {
+    theme:cycle?`${base.theme} ${cycle+1}`:base.theme,
+    letters:[...base.letters],
+    words:[...base.words]
+  };
+}
+
+function currentGameEmployee(){
+  return employeeById(currentUser?.id);
+}
+
+function wordWonderStorageId(employee=currentGameEmployee()){
+  return employee?.id||currentUser?.id||currentUser?.email||'guest';
+}
+
+function getSavedWordWonderProgress(employee=currentGameEmployee()){
+  let cached=null;
+  try{
+    const all=JSON.parse(localStorage.getItem(HRP_GAME_KEY)||'{}');
+    cached=all[wordWonderStorageId(employee)]||null;
+  }catch(err){
+    cached=null;
+  }
+  const embedded=employee?.gameProgress?.game==='words-of-wonders'?employee.gameProgress:null;
+  if(cached&&embedded){
+    const cachedTime=new Date(cached.updatedAt||0).getTime();
+    const embeddedTime=new Date(embedded.updatedAt||0).getTime();
+    return cachedTime>=embeddedTime?cached:embedded;
+  }
+  return cached||embedded;
+}
+
+function loadWordWonderProgress(){
+  const employee=currentGameEmployee();
+  const progress=getSavedWordWonderProgress(employee);
+  if(!progress||progress.game!=='words-of-wonders'){
+    wordWonderStarted=false;
+    wordWonderLevel=0;
+    wordWonderFound=[];
+    wordWonderPoints=0;
+    wordWonderLetters=[...getWordWonderLevel().letters];
+    return;
+  }
+  wordWonderStarted=Boolean(progress.started);
+  wordWonderLevel=Number.isInteger(progress.level)?progress.level:0;
+  wordWonderFound=Array.isArray(progress.found)?progress.found.filter(Boolean):[];
+  wordWonderPoints=Number(progress.points)||0;
+  wordWonderLetters=Array.isArray(progress.letters)&&progress.letters.length?progress.letters:[...getWordWonderLevel().letters];
+}
+
+function saveWordWonderProgress(){
+  const employee=currentGameEmployee();
+  if(!employee) return;
+  const progress={
+    game:'words-of-wonders',
+    started:wordWonderStarted,
+    level:wordWonderLevel,
+    found:[...wordWonderFound],
+    points:wordWonderPoints,
+    letters:[...wordWonderLetters],
+    updatedAt:new Date().toISOString()
+  };
+  employee.gameProgress=progress;
+  try{
+    const all=JSON.parse(localStorage.getItem(HRP_GAME_KEY)||'{}');
+    all[wordWonderStorageId(employee)]=progress;
+    localStorage.setItem(HRP_GAME_KEY,JSON.stringify(all));
+  }catch(err){}
+  saveStore();
+}
+
+function renderWordWonderLeaderboard(){
+  const currentId=currentUser?.id;
+  const leaders=store.employees
+    .map(employee=>{
+      const progress=getSavedWordWonderProgress(employee);
+      return {
+        id:employee.id,
+        name:employee.name,
+        points:Number(progress?.points)||0,
+        level:Number.isInteger(progress?.level)?progress.level:0,
+        found:Array.isArray(progress?.found)?progress.found.length:0
+      };
+    })
+    .sort((a,b)=>b.points-a.points||b.level-a.level||b.found-a.found||a.name.localeCompare(b.name))
+    .slice(0,5);
+  return `<div class="word-leaderboard">
+    <div class="word-leaderboard-title"><i class="ti ti-trophy" aria-hidden="true"></i> Leaderboard</div>
+    ${leaders.map((player,index)=>`<div class="leader-row ${player.id===currentId?'me':''}">
+      <span class="leader-rank">#${index+1}</span>
+      <span class="leader-name">${player.name}</span>
+      <span class="leader-meta">Level ${player.level+1}</span>
+      <strong>${player.points}</strong>
+    </div>`).join('')}
+  </div>`;
+}
+
+function updateWordWonderStatus(){
+  const level=getWordWonderLevel();
+  const foundEl=document.getElementById('wordsFound');
+  const pointsEl=document.getElementById('wordPoints');
+  if(foundEl) foundEl.textContent=`${wordWonderFound.length}/${level.words.length}`;
+  if(pointsEl) pointsEl.textContent=wordWonderPoints;
+}
+
+function renderWordWonderIntro(){
+  const area=document.getElementById('gameArea');
+  if(!area) return;
+  const saved=getSavedWordWonderProgress();
+  const hasSavedGame=saved?.game==='words-of-wonders'&&saved.started;
+  updateWordWonderStatus();
+  area.innerHTML=`<div class="word-game"><div class="game-intro"><i class="ti ti-letters-case" aria-hidden="true"></i><h2>Words of Wonders</h2><p>Make as many valid words as you can from the given letters. Complete the list to move to the next level.</p><button class="btn pri" onclick="${hasSavedGame?'resumeWordGame()':'startWordGame()'}"><i class="ti ti-player-play" aria-hidden="true"></i> ${hasSavedGame?`Resume Level ${Number(saved.level||0)+1}`:'Start Game'}</button>${hasSavedGame?'<button class="btn sm" onclick="startWordGame(true)" style="margin-left:8px"><i class="ti ti-refresh" aria-hidden="true"></i> New game</button>':''}</div>${renderWordWonderLeaderboard()}</div>`;
+}
+
+function renderWordWonderRound(message=''){
+  const area=document.getElementById('gameArea');
+  if(!area) return;
+  const level=getWordWonderLevel();
+  const complete=wordWonderFound.length===level.words.length;
+  updateWordWonderStatus();
+  area.innerHTML=`
+    <div class="word-game">
+      <div class="game-progress">Level ${wordWonderLevel+1} - ${level.theme}</div>
+      <h2>Find the hidden words</h2>
+      <div class="word-letters">${wordWonderLetters.map(letter=>`<span class="word-letter">${letter}</span>`).join('')}</div>
+      <div class="word-entry">
+        <input id="wordGuess" autocomplete="off" placeholder="Type a word" onkeydown="if(event.key==='Enter') submitWonderWord()">
+        <button class="btn pri" onclick="submitWonderWord()"><i class="ti ti-check" aria-hidden="true"></i> Submit</button>
+      </div>
+      <div class="word-actions">
+        <button class="btn sm" onclick="shuffleWonderLetters()"><i class="ti ti-arrows-shuffle" aria-hidden="true"></i> Shuffle</button>
+        ${complete?`<button class="btn pri sm" onclick="nextWonderLevel()"><i class="ti ti-arrow-right" aria-hidden="true"></i> Next level</button>`:''}
+      </div>
+      ${message?`<div class="word-message ${complete?'good':''}">${message}</div>`:''}
+      <div class="word-hints">${level.words.map(word=>`<span>${wordWonderFound.includes(word)?word:word.length+' letters'}</span>`).join('')}</div>
+      <div class="found-words">${wordWonderFound.length?wordWonderFound.map(word=>`<span class="found-word">${word}</span>`).join(''):'<span class="empty-word">No words found yet</span>'}</div>
+      ${renderWordWonderLeaderboard()}
+    </div>`;
+  const input=document.getElementById('wordGuess');
+  if(input) input.focus();
+}
+
+function canBuildWord(word,letters){
+  const available=[...letters];
+  for(const char of word){
+    const index=available.indexOf(char);
+    if(index<0) return false;
+    available.splice(index,1);
+  }
+  return true;
+}
+
+window.renderGameTab=function(){
+  const area=document.getElementById('gameArea');
+  if(!area) return;
+  loadWordWonderProgress();
+  if(wordWonderStarted) renderWordWonderRound();
+  else renderWordWonderIntro();
+};
+
+window.startWordGame=function(forceNew=false){
+  if(!forceNew){
+    const saved=getSavedWordWonderProgress();
+    if(saved?.game==='words-of-wonders'&&saved.started){
+      window.resumeWordGame();
+      return;
+    }
+  }
+  wordWonderStarted=true;
+  wordWonderLevel=0;
+  wordWonderFound=[];
+  wordWonderPoints=0;
+  wordWonderLetters=[...getWordWonderLevel().letters];
+  saveWordWonderProgress();
+  renderWordWonderRound('Level started. Find every word to move ahead.');
+};
+
+window.resumeWordGame=function(){
+  loadWordWonderProgress();
+  wordWonderStarted=true;
+  saveWordWonderProgress();
+  renderWordWonderRound(`Resumed Level ${wordWonderLevel+1}. Continue from where you left.`);
+};
+
+window.submitWonderWord=function(){
+  const input=document.getElementById('wordGuess');
+  const guess=(input?.value||'').trim().toUpperCase();
+  const level=getWordWonderLevel();
+  if(!guess){
+    renderWordWonderRound('Type a word first.');
+    return;
+  }
+  if(wordWonderFound.includes(guess)){
+    renderWordWonderRound('You already found that word.');
+    return;
+  }
+  if(!canBuildWord(guess,level.letters)){
+    renderWordWonderRound('Use only the letters shown in this level.');
+    return;
+  }
+  if(!level.words.includes(guess)){
+    renderWordWonderRound('Nice try. That word is not in this puzzle list.');
+    return;
+  }
+  wordWonderFound.push(guess);
+  wordWonderPoints+=guess.length*10;
+  saveWordWonderProgress();
+  const complete=wordWonderFound.length===level.words.length;
+  renderWordWonderRound(complete?'Level complete. Move to the next word wonder.':`Good one. ${guess.length*10} points added.`);
+};
+
+window.shuffleWonderLetters=function(){
+  wordWonderLetters=[...wordWonderLetters].sort(()=>Math.random()-.5);
+  saveWordWonderProgress();
+  renderWordWonderRound('Letters shuffled.');
+};
+
+window.nextWonderLevel=function(){
+  wordWonderLevel++;
+  wordWonderFound=[];
+  wordWonderLetters=[...getWordWonderLevel().letters];
+  saveWordWonderProgress();
+  renderWordWonderRound('New level unlocked.');
+};
 
 enhanceUI();
 selRole('admin');
