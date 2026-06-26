@@ -57,6 +57,7 @@
       <div class="ni act" onclick="aPage('policies',this)"><i class="ti ti-file-text" aria-hidden="true"></i> Policies</div>
       <div class="ni" onclick="aPage('queries',this)"><i class="ti ti-message-circle" aria-hidden="true"></i> Queries <span class="nbadge" id="qBadge">3</span></div>
       <div class="ni" onclick="aPage('employees',this)"><i class="ti ti-users" aria-hidden="true"></i> Employees</div>
+      <div class="ni" onclick="aPage('adminOnboarding',this)"><i class="ti ti-shield-check" aria-hidden="true"></i> BVG approvals</div>
       <div class="ni" onclick="aPage('documents',this)"><i class="ti ti-folder" aria-hidden="true"></i> Documents</div>
       <div class="ni" onclick="aPage('announcements',this)"><i class="ti ti-speakerphone" aria-hidden="true"></i> Announcements</div>
       <div class="nsec">Reports</div>
@@ -83,6 +84,10 @@
       <div class="pg" id="pg-employees">
         <div class="pg-title">Employees</div><div class="pg-sub">Leave balances across the team</div>
         <div class="card"><div class="card-hd"><div class="card-title"><i class="ti ti-users" aria-hidden="true"></i> Leave tracker</div></div><div style="overflow-x:auto"><table class="etable" id="eTable"></table></div></div>
+      </div>
+      <div class="pg" id="pg-adminOnboarding">
+        <div class="pg-title">BVG approvals</div><div class="pg-sub">Approve pre-joining documents before employee portal access is unlocked</div>
+        <div id="adminBvgList"></div>
       </div>
       <div class="pg" id="pg-documents">
         <div class="pg-title">Employee documents</div><div class="pg-sub">Upload offer letters, appointment letters, payslips, and tax documents for employees</div>
@@ -160,6 +165,26 @@
   </div>
 </div>
 
+<!-- PRE-JOINING BVG -->
+<div class="screen" id="s-preboarding">
+  <div class="topbar">
+    <div class="brand"><span>HR</span>Pulse <span style="font-size:11px;color:var(--color-text-tertiary);font-weight:400;margin-left:4px">Pre-joining BVG</span></div>
+    <div class="tb-right"><button class="logout-btn" onclick="logout()"><i class="ti ti-logout" style="font-size:13px" aria-hidden="true"></i> Sign out</button><div class="profile-chip"><div class="av av-e" id="preAvatar">PJ</div><span class="uname" id="preName">Candidate</span></div></div>
+  </div>
+  <div class="preboarding-main">
+    <div class="preboarding-shell">
+      <div class="preboarding-hero">
+        <div>
+          <div class="pg-title">Pre-joining document verification</div>
+          <div class="pg-sub">Upload all BVG documents. Your employee portal unlocks only after HR approval.</div>
+        </div>
+        <div class="preboarding-status" id="preboardingStatus">Pending</div>
+      </div>
+      <div id="preboardingPortal"></div>
+    </div>
+  </div>
+</div>
+
 <!-- EMPLOYEE -->
 <div class="screen" id="s-employee">
   <div class="topbar">
@@ -172,11 +197,11 @@
       <div class="ni act" onclick="ePage('home',this)"><i class="ti ti-home" aria-hidden="true"></i> Home</div>
       <div class="ni" onclick="ePage('myLeaves',this)"><i class="ti ti-calendar" aria-hidden="true"></i> My leaves</div>
       <div class="ni" onclick="ePage('aiChat',this)"><i class="ti ti-robot" aria-hidden="true"></i> Ask HR AI</div>
+      <div class="ni" onclick="ePage('engage',this)"><i class="ti ti-sparkles" aria-hidden="true"></i> Engage</div>
       <div class="ni" onclick="ePage('raiseQuery',this)"><i class="ti ti-message-plus" aria-hidden="true"></i> Raise query</div>
       <div class="ni" onclick="ePage('ePolicies',this)"><i class="ti ti-file-text" aria-hidden="true"></i> Policies</div>
       <div class="ni" onclick="ePage('eDocuments',this)"><i class="ti ti-folder" aria-hidden="true"></i> Documents</div>
       <div class="ni" onclick="ePage('news',this)"><i class="ti ti-speakerphone" aria-hidden="true"></i> News</div>
-      <div class="ni" onclick="ePage('engage',this)"><i class="ti ti-sparkles" aria-hidden="true"></i> Engage</div>
       <div class="ni" onclick="ePage('resume',this)"><i class="ti ti-file-cv" aria-hidden="true"></i> Resume</div>
       <div class="ni" onclick="ePage('games',this)"><i class="ti ti-letters-case" aria-hidden="true"></i> Words of Wonders</div>
     </div>
@@ -235,8 +260,12 @@
       </div>
 
       <div class="pg" id="pg-aiChat">
-        <div class="pg-title">Ask HR AI</div><div class="pg-sub">Powered by Claude — ask about policies, leaves, benefits, or any HR question</div>
+        <div class="pg-title">Ask HR AI</div><div class="pg-sub">Live AI assistant for policies, leaves, documents, queries, and HR actions</div>
         <div class="card">
+          <div class="ai-status-row">
+            <span class="ai-status" id="aiStatus"><i class="ti ti-circle-dot" aria-hidden="true"></i> Checking live AI...</span>
+            <button class="btn sm" onclick="checkAiStatus()"><i class="ti ti-plug-connected" aria-hidden="true"></i> Check connection</button>
+          </div>
           <div class="chips">
             <button class="chip" onclick="chipQ('How many annual leaves do I have left?')">Annual leaves left?</button>
             <button class="chip" onclick="chipQ('What is the WFH policy?')">WFH policy?</button>
@@ -383,15 +412,18 @@
 <!-- MODALS -->
 <div class="modal-bg" id="mPol">
   <div class="modal">
-    <div class="modal-hd">New policy <button class="btn sm" onclick="closeM('mPol')" style="border:none"><i class="ti ti-x" aria-hidden="true"></i></button></div>
-    <div class="fi"><label>Policy name</label><input id="pN" placeholder="e.g. Annual Leave Policy"></div>
+    <div class="modal-hd">Import policies <button class="btn sm" onclick="closeM('mPol')" style="border:none"><i class="ti ti-x" aria-hidden="true"></i></button></div>
+    <div class="fi"><label>Fallback policy name</label><input id="pN" placeholder="Used only if the document has one policy"></div>
     <div class="fg2">
       <div class="fi"><label>Category</label><select id="pC"><option>Leave</option><option>Attendance</option><option>Benefits</option><option>Remote Work</option><option>Compensation</option><option>Code of Conduct</option></select></div>
       <div class="fi"><label>Status</label><select id="pSt"><option>Active</option><option>Draft</option></select></div>
     </div>
     <div class="fi"><label>Effective date</label><input type="date" id="pDt"></div>
-    <div class="fi"><label>Description</label><textarea id="pDs" placeholder="Key rules and scope..."></textarea></div>
-    <div class="modal-foot"><button class="btn" onclick="closeM('mPol')">Cancel</button><button class="btn pri" onclick="addPolicy()">Save policy</button></div>
+    <div class="fi"><label>Master policy document</label><input id="pMasterDoc" type="file" accept=".pdf,.docx,.txt,.md,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"></div>
+    <div class="hint-box" style="margin-top:0">HRPulse will tokenize headings like "Annual Leave Policy", "1. Attendance Policy", or all-caps section titles into separate policy cards.</div>
+    <div class="fi"><label>Or paste master policy text</label><textarea id="pDs" placeholder="Paste all policy text here if you do not upload a document..."></textarea></div>
+    <div id="policyTokenPreview" class="token-preview"></div>
+    <div class="modal-foot"><button class="btn" onclick="closeM('mPol')">Cancel</button><button class="btn pri" id="policyTokenizeBtn" type="button" onclick="importPolicies()"><i class="ti ti-wand" aria-hidden="true"></i> Tokenize & save policies</button></div>
   </div>
 </div>
 <div class="modal-bg" id="mRes">

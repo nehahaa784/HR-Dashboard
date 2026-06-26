@@ -1,5 +1,6 @@
 
 let loginRole='admin', resolveId=null, ovCI=null, chatHistory=[], isBotTyping=false;
+let lastEmployeeSheetModifiedAt=0, employeeSheetSyncing=false;
 let pidNext=6;
 const COMPANY={
   companyName:'Vayana Network',
@@ -68,6 +69,7 @@ function aPage(pg,el){
   if(pg==='policies') renderPolicies();
   if(pg==='queries') renderQueries();
   if(pg==='employees') renderEmpTable();
+  if(pg==='adminOnboarding') renderAdminBvg();
   if(pg==='documents') renderAdminDocuments();
   if(pg==='announcements') renderAnnouncements();
   if(pg==='overview') renderOverview();
@@ -158,13 +160,11 @@ function openM(id){document.getElementById(id).classList.add('open')}
 function closeM(id){document.getElementById(id).classList.remove('open')}
 
 function addPolicy(){
-  const name=document.getElementById('pN').value.trim();
-  if(!name){toast('Enter a policy name');return;}
-  policies.push({id:pidNext++,name,cat:document.getElementById('pC').value,status:document.getElementById('pSt').value,date:document.getElementById('pDt').value||new Date().toISOString().slice(0,10),desc:document.getElementById('pDs').value});
-  closeM('mPol');
-  ['pN','pDs'].forEach(id=>document.getElementById(id).value='');
-  renderPolicies();
-  toast('Policy saved');
+  if(typeof window.importPolicies==='function'){
+    window.importPolicies();
+    return;
+  }
+  toast('Policy importer is still loading. Please refresh and try again.');
 }
 
 function delPol(id){policies=policies.filter(p=>p.id!==id);renderPolicies();toast('Policy removed')}
@@ -331,6 +331,13 @@ const DOCUMENT_TYPES=[
   {key:'payslip',label:'Payslips',icon:'ti-receipt-2'},
   {key:'tax',label:'Tax Documents',icon:'ti-file-dollar'}
 ];
+const BVG_DOCUMENTS=[
+  {key:'identity',label:'Government ID proof',hint:'Aadhaar, passport, PAN, or driving licence'},
+  {key:'address',label:'Address proof',hint:'Utility bill, bank statement, rent agreement, or Aadhaar'},
+  {key:'education',label:'Education certificate',hint:'Highest qualification marksheet or degree certificate'},
+  {key:'experience',label:'Previous employment proof',hint:'Experience letter, relieving letter, or latest payslip'},
+  {key:'photo',label:'Passport-size photo',hint:'Clear recent photograph'}
+];
 const ENGAGE_QUIZ=[
   {id:'policy-basics',title:'Policy basics',question:'Where should you check the latest active HR rules?',options:['Company policies tab','Old chat screenshots','Ask a friend only'],answer:0},
   {id:'leave-ready',title:'Leave readiness',question:'What is the best first step before taking planned leave?',options:['Apply with reason in the portal','Disappear for a day','Tell HR after returning'],answer:0},
@@ -397,13 +404,17 @@ function normalizeStore(data){
   merged.hrs=Array.isArray(data.hrs)?data.hrs:base.hrs;
   merged.employees=Array.isArray(data.employees)?data.employees:base.employees;
   merged.policies=Array.isArray(data.policies)?data.policies:base.policies;
+  merged.policySources=Array.isArray(data.policySources)?data.policySources:[];
   merged.queries=Array.isArray(data.queries)?data.queries:base.queries;
   merged.events=Array.isArray(data.events)?data.events:base.events;
   merged.news=Array.isArray(data.news)?data.news:base.news;
   merged.teamWall=Array.isArray(data.teamWall)?data.teamWall:base.teamWall;
   merged.moodPulse=Array.isArray(data.moodPulse)?data.moodPulse:base.moodPulse;
   merged.news.forEach(n=>{n.reactions=n.reactions||{};});
-  merged.policies.forEach(p=>{p.format=p.format||'text';});
+  merged.policies.forEach(p=>{
+    p.format=p.format||'text';
+    p.updatedAt=p.updatedAt||p.date||new Date().toISOString();
+  });
   merged.queries.forEach((q,i)=>{
     q.id=q.id||i+1;
     q.status=q.status||'open';
@@ -432,6 +443,13 @@ function normalizeStore(data){
     e.documents=Array.isArray(e.documents)?e.documents:[];
     e.documents.forEach(doc=>{doc.acknowledgedAt=doc.acknowledgedAt||'';});
     e.gameProgress=e.gameProgress||null;
+    e.bvg=e.bvg||{};
+    e.bvg.status=e.bvg.status||'approved';
+    e.bvg.docs=e.bvg.docs||{};
+    e.bvg.note=e.bvg.note||'';
+    e.bvg.submittedAt=e.bvg.submittedAt||'';
+    e.bvg.reviewedAt=e.bvg.reviewedAt||'';
+    e.bvg.reviewedBy=e.bvg.reviewedBy||'';
   });
   merged.nextPolicyId=merged.nextPolicyId||Math.max(0,...merged.policies.map(p=>Number(p.id)||0))+1;
   merged.nextQueryId=merged.nextQueryId||Math.max(0,...merged.queries.map(q=>Number(q.id)||0))+1;
@@ -459,17 +477,35 @@ function formatQueryTime(value){
   if(Number.isNaN(dt.getTime())) return 'Time unavailable';
   return dt.toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
 }
+function policyUpdatedTime(policy){
+  const dt=new Date(policy?.updatedAt||policy?.date||Date.now());
+  return Number.isNaN(dt.getTime())?0:dt.getTime();
+}
+function policyReadValue(employee,policyId){
+  return employee?.policyReads?.[policyId];
+}
+function policyReadTime(employee,policyId){
+  const value=policyReadValue(employee,policyId);
+  const raw=typeof value==='string'?value:value?.acknowledgedAt;
+  const dt=new Date(raw||0);
+  return Number.isNaN(dt.getTime())?0:dt.getTime();
+}
+function isPolicyAcknowledgedCurrent(employee,policy){
+  const readTime=policyReadTime(employee,policy.id);
+  return Boolean(readTime&&readTime>=policyUpdatedTime(policy));
+}
 function policyReadStats(employee){
   const active=store.policies.filter(p=>p.status==='Active');
-  const read=active.filter(p=>employee.policyReads?.[p.id]).length;
+  const read=active.filter(p=>isPolicyAcknowledgedCurrent(employee,p)).length;
   return {read,total:active.length};
 }
 function policyReadDetails(employee){
   const active=store.policies.filter(p=>p.status==='Active');
   if(!active.length) return '<div class="ri-meta">No active policies assigned</div>';
   return `<div class="policy-read-list">${active.map(p=>{
-    const readAt=employee.policyReads?.[p.id];
-    return `<span class="policy-read-chip ${readAt?'done':'todo'}"><i class="ti ${readAt?'ti-check':'ti-clock'}" aria-hidden="true"></i> ${p.name}${readAt?` - ${formatQueryTime(readAt)}`:' - not read'}</span>`;
+    const readAt=policyReadValue(employee,p.id);
+    const current=isPolicyAcknowledgedCurrent(employee,p);
+    return `<span class="policy-read-chip ${current?'done':'todo'}"><i class="ti ${current?'ti-check':'ti-clock'}" aria-hidden="true"></i> ${p.name}${current?` - ${formatQueryTime(typeof readAt==='string'?readAt:readAt?.acknowledgedAt)}`:readAt?' - updated, reread needed':' - not read'}</span>`;
   }).join('')}</div>`;
 }
 function portalBrand(role){
@@ -485,7 +521,7 @@ function applyCompanyBranding(){
   const loginSub=document.querySelector('.login-sub');
   if(loginSub) loginSub.textContent=`Sign in to ${COMPANY.companyName} HR workspace`;
   const loginTag=document.querySelector('.login-tagline');
-  if(loginTag) loginTag.textContent=`${COMPANY.portalSubtitle} for policies, leaves, and employee support.`;
+  if(loginTag) loginTag.textContent=`${COMPANY.portalSubtitle}`;
   const notice=document.getElementById('securityNotice');
   if(notice) notice.textContent=COMPANY.securityNotice;
   const hint=document.getElementById('loginHint');
@@ -500,16 +536,22 @@ function applyCompanyBranding(){
   });
 }
 function policySummary(p){
-  return p.format==='pdf' ? `PDF policy document: ${p.fileName||'attached file'}` : (p.desc||'No description added yet.');
+  return p.desc||'No description added yet.';
 }
 function policyAttachmentLink(p){
-  if(p.format!=='pdf'||!p.fileData) return '';
-  const fileName=p.fileName||`${p.name}.pdf`;
-  return `<a class="policy-file-link" href="${p.fileData}" target="_blank" rel="noopener" download="${fileName}"><i class="ti ti-file-type-pdf" aria-hidden="true"></i> ${fileName}</a>`;
+  const source=p.sourceId?(store.policySources||[]).find(s=>s.id===p.sourceId):null;
+  const fileData=p.fileData||p.sourceFileData||source?.fileData;
+  if(!fileData) return '';
+  const fileName=p.fileName||p.sourceFileName||source?.fileName||`${p.name}.pdf`;
+  return `<a class="policy-file-link" href="${fileData}" target="_blank" rel="noopener" download="${fileName}"><i class="ti ti-file" aria-hidden="true"></i> Source: ${fileName}</a>`;
+}
+function policyFormatLabel(p){
+  if(p.format==='master-document') return 'Imported';
+  return (p.format||'text').toUpperCase();
 }
 function activePolicies(){return store.policies.filter(p=>p.status==='Active');}
 function employeeQueries(employee){return store.queries.filter(q=>q.empId===employee?.id).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));}
-function unreadPolicies(employee){return activePolicies().filter(p=>!employee?.policyReads?.[p.id]);}
+function unreadPolicies(employee){return activePolicies().filter(p=>!isPolicyAcknowledgedCurrent(employee,p));}
 function formatDateOnly(value){
   const dt=new Date(`${value}T00:00:00`);
   if(Number.isNaN(dt.getTime())) return value||'Date pending';
@@ -869,9 +911,7 @@ function renderLeaveCalendar(e){
   el.innerHTML=`<div class="calendar-grid">${cells.map(([label,used,total,color])=>`<div class="calendar-cell"><span>${label}</span><strong style="color:${color}">${used}</strong><small>${total-used} left</small></div>`).join('')}</div><div class="calendar-note">Used leave days by category for the current year.</div>`;
 }
 window.togglePolicyFormat=function(){
-  const format=document.getElementById('pFormat')?.value||'text';
-  document.getElementById('pTextWrap').style.display=format==='text'?'block':'none';
-  document.getElementById('pPdfWrap').style.display=format==='pdf'?'block':'none';
+  return;
 };
 function fileToDataUrl(file){
   return new Promise((resolve,reject)=>{
@@ -963,10 +1003,70 @@ window.applyProfileCrop=function(){
 };
 function resetPolicyForm(){
   ['pN','pDs'].forEach(id=>document.getElementById(id).value='');
-  const pdf=document.getElementById('pPdf');
-  if(pdf) pdf.value='';
-  document.getElementById('pFormat').value='text';
-  togglePolicyFormat();
+  const master=document.getElementById('pMasterDoc');
+  if(master) master.value='';
+  const preview=document.getElementById('policyTokenPreview');
+  if(preview) preview.innerHTML='';
+}
+
+function cleanPolicyTitle(title,fallback='Company Policy'){
+  const cleaned=String(title||'')
+    .replace(/^#+\s*/,'')
+    .replace(/^\d+[\).\-\s]+/,'')
+    .replace(/^policy\s*[:\-]\s*/i,'')
+    .trim();
+  return cleaned||fallback;
+}
+
+function isPolicyHeading(line){
+  const text=line.trim();
+  if(!text||text.length>110) return false;
+  if(/^[-*•]/.test(text)) return false;
+  if(/^(section|chapter|part)?\s*\d+[\).\-\s]+.{3,}$/i.test(text)) return true;
+  if(/\bpolicy\b/i.test(text)&&text.split(/\s+/).length<=12) return true;
+  if(/^[A-Z0-9\s&/(),.-]{8,}$/.test(text)&&/[A-Z]/.test(text)) return true;
+  return false;
+}
+
+function tokenizePolicyDocument(text,fallbackName='Company Policy'){
+  const lines=String(text||'').replace(/\r/g,'').split('\n');
+  const sections=[];
+  let current=null;
+  lines.forEach(raw=>{
+    const line=raw.trim();
+    if(isPolicyHeading(line)){
+      if(current&&current.body.join('\n').trim()) sections.push(current);
+      current={title:cleanPolicyTitle(line,fallbackName),body:[]};
+      return;
+    }
+    if(!current) current={title:fallbackName,body:[]};
+    current.body.push(raw);
+  });
+  if(current&&current.body.join('\n').trim()) sections.push(current);
+  const unique=new Map();
+  sections.forEach((section,index)=>{
+    const title=cleanPolicyTitle(section.title,`${fallbackName} ${index+1}`);
+    const desc=section.body.join('\n').replace(/\n{3,}/g,'\n\n').trim();
+    if(!desc) return;
+    const key=title.toLowerCase();
+    const finalTitle=unique.has(key)?`${title} ${index+1}`:title;
+    unique.set(finalTitle.toLowerCase(),{name:finalTitle,desc});
+  });
+  return [...unique.values()];
+}
+
+async function extractPolicyMasterText(file,fileData){
+  if(/\.(txt|md|csv)$/i.test(file.name)||file.type.startsWith('text/')){
+    return await file.text();
+  }
+  const res=await fetch('/api/extract-policy-document',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({fileName:file.name,fileData})
+  });
+  const data=await res.json().catch(()=>({}));
+  if(!res.ok) throw new Error(data.error||'Could not extract text from policy document');
+  return data.text||'';
 }
 window.openEmployeeProfileDetails=function(){
   const employee=employeeById(currentUser?.id);
@@ -1036,6 +1136,17 @@ function enhanceUI(){
       <div class="stat"><div class="stat-l">Open queries</div><div class="stat-v" style="color:#854F0B" id="empOpenQ">0</div></div>
     </div>
     <div class="card"><div class="card-hd"><div class="card-title"><i class="ti ti-address-book" aria-hidden="true"></i> Employee names</div><button class="btn pri" onclick="openM('mEmp')"><i class="ti ti-user-plus" aria-hidden="true"></i> Add employee</button></div><div id="employeeNames"></div></div>
+    <div class="card">
+      <div class="card-hd"><div class="card-title"><i class="ti ti-file-spreadsheet" aria-hidden="true"></i> Bulk employee upload</div><div class="table-actions"><button class="btn sm" onclick="syncEmployeesFromBackendSheet(true)"><i class="ti ti-refresh" aria-hidden="true"></i> Sync Excel sheet</button><button class="btn sm" onclick="downloadEmployeeCsvTemplate()"><i class="ti ti-download" aria-hidden="true"></i> CSV template</button></div></div>
+      <div class="fg2">
+        <div class="fi"><label>Upload CSV or Excel</label><input id="empBulkFile" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></div>
+        <div class="fi"><label>Default temporary password</label><input id="empBulkDefaultPass" value="emp123" placeholder="Used when file password is blank"></div>
+      </div>
+      <div class="hint-box" style="margin-top:0">CSV/Excel columns: name, email, department, role, tempPassword. Live Excel sync is on, so edits in employees.xlsx/employees.csv will automatically reflect here while this tab is open. Every newly created employee is sent their login ID and temporary password when email is configured.</div>
+      <div class="modal-foot" style="justify-content:flex-start;padding-top:10px"><button class="btn pri" onclick="bulkUploadEmployees()"><i class="ti ti-upload" aria-hidden="true"></i> Upload employees & send emails</button></div>
+      <div id="sheetSyncResult" class="bulk-result"></div>
+      <div id="bulkEmpResult" class="bulk-result"></div>
+    </div>
     <div class="card"><div class="card-hd"><div class="card-title"><i class="ti ti-users" aria-hidden="true"></i> Employee management</div></div><div style="overflow-x:auto"><table class="etable" id="eTable"></table></div></div>`;
   document.querySelector('#pg-overview .stats .stat:first-child .stat-v').id='ovEmp';
   document.querySelector('#s-employee .topbar .av').id='empAvatar';
@@ -1063,8 +1174,21 @@ function enhanceUI(){
         <div class="login-error" id="pwdErr">Passwords must match and be at least 6 characters.</div>
         <div class="modal-foot"><button class="btn pri" onclick="saveNewPassword()">Save and continue</button></div>
       </div>
+    </div>
+    <div class="modal-bg" id="mBvgPreview">
+      <div class="modal modal-wide">
+        <div class="modal-hd"><span id="bvgPreviewTitle">BVG document</span><button class="btn sm" onclick="closeM('mBvgPreview')" style="border:none"><i class="ti ti-x" aria-hidden="true"></i></button></div>
+        <div id="bvgPreviewBody" class="bvg-preview-body"></div>
+        <div class="modal-foot"><a class="btn pri" id="bvgPreviewDownload" href="#" download><i class="ti ti-download" aria-hidden="true"></i> Download</a><button class="btn" onclick="closeM('mBvgPreview')">Close</button></div>
+      </div>
     </div>`);
   document.querySelectorAll('.modal-bg').forEach(bg=>bg.addEventListener('click',e=>{if(e.target===bg)bg.classList.remove('open')}));
+  window.setInterval(()=>{
+    const employeesPage=document.getElementById('pg-employees');
+    if(currentUser?.portal==='hr'&&employeesPage?.classList.contains('act')){
+      syncEmployeesFromBackendSheet(false);
+    }
+  },5000);
 }
 
 window.selRole=function(r){
@@ -1096,11 +1220,19 @@ window.doLogin=function(){
 
 function enterPortal(){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  if(liveRole==='employee'){
+    const employee=employeeById(currentUser?.id)||currentUser;
+    if(employee?.bvg?.status!=='approved'){
+      document.getElementById('s-preboarding').classList.add('active');
+      renderPreboardingPortal();
+      return;
+    }
+  }
   document.getElementById(liveRole==='hr'?'s-admin':'s-employee').classList.add('active');
   if(liveRole==='hr'){
     document.getElementById('hrAvatar').textContent=initials(currentUser.name);
     document.getElementById('hrTopName').textContent=currentUser.name;
-    renderPolicies();renderQueries();
+    renderPolicies();renderQueries();renderAdminBvg();
   }else{
     document.getElementById('empAvatar').outerHTML=avatarHtml(employeeById(currentUser.id)||currentUser,'av av-e');
     document.querySelector('#s-employee .topbar .av, #s-employee .topbar .avatar-img').id='empAvatar';
@@ -1140,7 +1272,7 @@ window.renderPolicies=function(){
   store.policies.forEach(p=>{
     const d=document.createElement('div');
     d.className='row-item';
-    d.innerHTML=`<div><div class="ri-name">${p.name}</div><div class="ri-meta">${p.cat} - ${p.date} - ${(p.format||'text').toUpperCase()}</div><div class="query-msg">${policySummary(p)}</div>${policyAttachmentLink(p)}</div><div class="ri-right"><span class="badge b-${p.status.toLowerCase()}">${p.status}</span><button class="btn sm" title="Cycle status" onclick="cycleStatus(${p.id})"><i class="ti ti-refresh" aria-hidden="true"></i></button><button class="btn sm danger" title="Delete" onclick="delPol(${p.id})"><i class="ti ti-trash" aria-hidden="true"></i></button></div>`;
+    d.innerHTML=`<div><div class="ri-name">${p.name}</div><div class="ri-meta">${p.cat} - ${p.date} - ${policyFormatLabel(p)}</div><div class="query-msg">${policySummary(p)}</div>${policyAttachmentLink(p)}</div><div class="ri-right"><span class="badge b-${p.status.toLowerCase()}">${p.status}</span><button class="btn sm" title="Cycle status" onclick="cycleStatus(${p.id})"><i class="ti ti-refresh" aria-hidden="true"></i></button><button class="btn sm danger" title="Delete" onclick="delPol(${p.id})"><i class="ti ti-trash" aria-hidden="true"></i></button></div>`;
     l.appendChild(d);
   });
   document.getElementById('sTot').textContent=store.policies.length;
@@ -1149,35 +1281,104 @@ window.renderPolicies=function(){
   document.getElementById('sArch').textContent=store.policies.filter(p=>p.status==='Archived').length;
 };
 
-window.addPolicy=async function(){
-  const name=document.getElementById('pN').value.trim();
-  if(!name){toast('Enter a policy name');return;}
-  const format=document.getElementById('pFormat').value;
-  const policy={id:store.nextPolicyId++,name,cat:document.getElementById('pC').value,status:document.getElementById('pSt').value,date:document.getElementById('pDt').value||new Date().toISOString().slice(0,10),format,desc:''};
-  if(format==='pdf'){
-    const file=document.getElementById('pPdf').files[0];
-    if(!file){toast('Choose a PDF file');return;}
-    if(file.type&&file.type!=='application/pdf'){toast('Only PDF files are accepted');return;}
-    try{
-      policy.fileName=file.name;
-      policy.fileData=await fileToDataUrl(file);
-      policy.desc=`PDF policy document: ${file.name}`;
-    }catch(err){
-      toast('Could not read PDF file');
+window.importPolicies=async function(){
+  const button=document.getElementById('policyTokenizeBtn');
+  const preview=document.getElementById('policyTokenPreview');
+  const setPreview=(msg,type='info')=>{
+    if(preview) preview.innerHTML=`<div class="token-message token-${type}">${msg}</div>`;
+  };
+  const previousButtonText=button?.innerHTML;
+  if(button){
+    button.disabled=true;
+    button.innerHTML='<i class="ti ti-loader-2" aria-hidden="true"></i> Tokenizing...';
+  }
+  try{
+    const fallbackName=document.getElementById('pN').value.trim()||'Company Policy';
+    const file=document.getElementById('pMasterDoc')?.files?.[0];
+    let text=document.getElementById('pDs').value.trim();
+    let fileData='', fileName='', sourceId='';
+    if(file){
+      if(file.size>4*1024*1024){
+        setPreview('This file is too large for browser storage. Please upload a file under 4 MB or paste the policy text.', 'error');
+        toast('Policy document must be under 4 MB');
+        return;
+      }
+      try{
+        fileName=file.name;
+        setPreview(`Reading ${fileName}...`);
+        fileData=await fileToDataUrl(file);
+        text=await extractPolicyMasterText(file,fileData);
+      }catch(err){
+        setPreview(err.message||'Could not read master policy document', 'error');
+        toast(err.message||'Could not read master policy document');
+        return;
+      }
+    }
+    if(!text){
+      setPreview('Upload a master policy document or paste policy text.', 'error');
+      toast('Upload a master policy document or paste policy text');
       return;
     }
-  }else{
-    policy.desc=document.getElementById('pDs').value.trim();
-    if(!policy.desc){toast('Enter policy text');return;}
+    const tokens=tokenizePolicyDocument(text,fallbackName);
+    if(!tokens.length){
+      setPreview('No policy sections were found. Add clear headings like "Annual Leave Policy" or paste each policy under a heading.', 'error');
+      toast('No policy sections found');
+      return;
+    }
+    setPreview(`Found ${tokens.length} policy section${tokens.length===1?'':'s'}: ${tokens.slice(0,5).map(t=>t.name).join(', ')}${tokens.length>5?'...':''}`);
+    const cat=document.getElementById('pC').value;
+    const status=document.getElementById('pSt').value;
+    const date=document.getElementById('pDt').value||new Date().toISOString().slice(0,10);
+    const now=new Date().toISOString();
+    const beforePolicies=store.policies.slice();
+    const beforeSources=(store.policySources||[]).slice();
+    const beforeNextPolicyId=store.nextPolicyId;
+    if(fileData){
+      sourceId=`policy-source-${Date.now()}`;
+      store.policySources=store.policySources||[];
+      store.policySources.unshift({id:sourceId,fileName,fileData,uploadedAt:now});
+    }
+    const imported=tokens.map(token=>({
+      id:store.nextPolicyId++,
+      name:token.name,
+      cat,
+      status,
+      date,
+      format:file?'master-document':'text',
+      desc:token.desc,
+      sourceFileName:fileName,
+      sourceId,
+      updatedAt:now
+    }));
+    store.policies.push(...imported);
+    try{
+      saveStore();
+    }catch(err){
+      store.policies=beforePolicies;
+      store.policySources=beforeSources;
+      store.nextPolicyId=beforeNextPolicyId;
+      setPreview('The policies were tokenized, but the browser could not save them. Try a smaller document or paste plain text.', 'error');
+      toast('Could not save imported policies');
+      return;
+    }
+    closeM('mPol');
+    resetPolicyForm();
+    renderPolicies();
+    toast(`${imported.length} polic${imported.length===1?'y':'ies'} created from master document`);
+  }finally{
+    if(button){
+      button.disabled=false;
+      button.innerHTML=previousButtonText||'<i class="ti ti-wand" aria-hidden="true"></i> Tokenize & save policies';
+    }
   }
-  store.policies.push(policy);
-  saveStore();closeM('mPol');resetPolicyForm();renderPolicies();toast('Policy saved');
 };
+window.addPolicy=window.importPolicies;
 window.delPol=function(id){store.policies=store.policies.filter(p=>p.id!==id);saveStore();renderPolicies();toast('Policy removed');};
 window.cycleStatus=function(id){
   const p=store.policies.find(x=>x.id===id);
   if(!p) return;
   p.status=p.status==='Active'?'Draft':p.status==='Draft'?'Archived':'Active';
+  p.updatedAt=new Date().toISOString();
   saveStore();renderPolicies();toast(`Status changed to ${p.status}`);
 };
 
@@ -1213,13 +1414,437 @@ window.resolveQ=function(){
   toast('Query resolved');
 };
 
+function bvgStats(employee){
+  const docs=employee?.bvg?.docs||{};
+  const uploaded=BVG_DOCUMENTS.filter(doc=>docs[doc.key]?.fileData).length;
+  return {uploaded,total:BVG_DOCUMENTS.length,complete:uploaded===BVG_DOCUMENTS.length};
+}
+
+function bvgStatusLabel(status){
+  if(status==='approved') return 'Approved';
+  if(status==='rejected') return 'Changes requested';
+  if(status==='submitted') return 'Submitted to HR';
+  return 'Pending upload';
+}
+
+function renderPreboardingPortal(){
+  const employee=employeeById(currentUser?.id);
+  const area=document.getElementById('preboardingPortal');
+  if(!employee||!area) return;
+  employee.bvg=employee.bvg||{status:'pending',docs:{}};
+  employee.bvg.docs=employee.bvg.docs||{};
+  const stats=bvgStats(employee);
+  const status=document.getElementById('preboardingStatus');
+  if(status){
+    status.textContent=bvgStatusLabel(employee.bvg.status);
+    status.className=`preboarding-status ${employee.bvg.status}`;
+  }
+  const avatar=document.getElementById('preAvatar');
+  const name=document.getElementById('preName');
+  if(avatar) avatar.textContent=initials(employee.name);
+  if(name) name.textContent=employee.name;
+  const locked=employee.bvg.status==='submitted';
+  const rejected=employee.bvg.status==='rejected';
+  area.innerHTML=`
+    <div class="stats">
+      <div class="stat"><div class="stat-l">Documents uploaded</div><div class="stat-v">${stats.uploaded}/${stats.total}</div></div>
+      <div class="stat"><div class="stat-l">BVG status</div><div class="stat-v" style="font-size:18px">${bvgStatusLabel(employee.bvg.status)}</div></div>
+      <div class="stat"><div class="stat-l">Portal access</div><div class="stat-v" style="font-size:18px">${employee.bvg.status==='approved'?'Unlocked':'Locked'}</div></div>
+    </div>
+    ${rejected&&employee.bvg.note?`<div class="hint-box danger-soft"><strong>HR requested changes:</strong><br>${employee.bvg.note}</div>`:''}
+    <div class="bvg-grid">
+      ${BVG_DOCUMENTS.map(doc=>{
+        const uploaded=employee.bvg.docs[doc.key];
+        return `<div class="bvg-card ${uploaded?'done':''}">
+          <div class="bvg-icon"><i class="ti ${uploaded?'ti-check':'ti-upload'}" aria-hidden="true"></i></div>
+          <div>
+            <div class="ri-name">${doc.label}</div>
+            <div class="ri-meta">${doc.hint}</div>
+            ${uploaded?`<div class="ri-meta">Uploaded ${formatQueryTime(uploaded.uploadedAt)} - ${uploaded.fileName}</div>`:''}
+          </div>
+          <div class="bvg-actions">
+            ${uploaded?`<a class="btn sm" href="${uploaded.fileData}" download="${uploaded.fileName}" target="_blank" rel="noopener"><i class="ti ti-download" aria-hidden="true"></i> View</a>`:''}
+            <label class="btn sm ${locked?'disabled':''}"><i class="ti ti-file-upload" aria-hidden="true"></i> ${uploaded?'Replace':'Upload'}<input type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" ${locked?'disabled':''} onchange="uploadBvgDocument('${doc.key}',this.files[0])" hidden></label>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+    <div class="card">
+      <div class="card-hd"><div class="card-title"><i class="ti ti-lock-check" aria-hidden="true"></i> Submit for HR approval</div></div>
+      <div class="hint-box" style="margin-top:0">You can access the full employee portal only after HR approves all BVG documents.</div>
+      <button class="btn pri" onclick="submitBvgForReview()" ${!stats.complete||locked?'disabled':''}><i class="ti ti-send" aria-hidden="true"></i> ${locked?'Submitted to HR':'Submit documents'}</button>
+    </div>`;
+}
+
+window.uploadBvgDocument=async function(key,file){
+  const employee=employeeById(currentUser?.id);
+  if(!employee||!file) return;
+  if(file.size>3*1024*1024){toast('Document must be under 3 MB');return;}
+  employee.bvg=employee.bvg||{status:'pending',docs:{}};
+  employee.bvg.docs=employee.bvg.docs||{};
+  try{
+    employee.bvg.docs[key]={fileName:file.name,fileData:await fileToDataUrl(file),uploadedAt:new Date().toISOString()};
+    if(employee.bvg.status==='rejected'){
+      employee.bvg.status='pending';
+      employee.bvg.note='';
+    }
+    saveStore();
+    renderPreboardingPortal();
+    toast('Document uploaded');
+  }catch(err){
+    toast('Could not read document');
+  }
+};
+
+window.submitBvgForReview=function(){
+  const employee=employeeById(currentUser?.id);
+  if(!employee) return;
+  if(!bvgStats(employee).complete){toast('Upload all required BVG documents first');return;}
+  employee.bvg.status='submitted';
+  employee.bvg.submittedAt=new Date().toISOString();
+  saveStore();
+  renderPreboardingPortal();
+  toast('Submitted to HR for approval');
+};
+
+function renderAdminBvg(){
+  const area=document.getElementById('adminBvgList');
+  if(!area) return;
+  const employees=[...store.employees].sort((a,b)=>{
+    const order={submitted:0,rejected:1,pending:2,approved:3};
+    return (order[a.bvg?.status]??9)-(order[b.bvg?.status]??9)||a.name.localeCompare(b.name);
+  });
+  area.innerHTML=`
+    <div class="stats">
+      <div class="stat"><div class="stat-l">Submitted</div><div class="stat-v">${employees.filter(e=>e.bvg?.status==='submitted').length}</div></div>
+      <div class="stat"><div class="stat-l">Pending</div><div class="stat-v">${employees.filter(e=>['pending','rejected'].includes(e.bvg?.status)).length}</div></div>
+      <div class="stat"><div class="stat-l">Approved</div><div class="stat-v">${employees.filter(e=>e.bvg?.status==='approved').length}</div></div>
+    </div>
+    <div class="card">
+      <div class="card-hd"><div class="card-title"><i class="ti ti-shield-check" aria-hidden="true"></i> Candidate BVG queue</div></div>
+      ${employees.map(employee=>{
+        const stats=bvgStats(employee);
+        const docs=employee.bvg?.docs||{};
+        return `<div class="row-item bvg-admin-row">
+          <div>
+            <div class="ri-name">${employee.name}</div>
+            <div class="ri-meta">${employee.email} - ${employee.dept||'General'} - ${stats.uploaded}/${stats.total} documents</div>
+            <div class="bvg-doc-links">${BVG_DOCUMENTS.map(doc=>{
+              const uploaded=docs[doc.key];
+              return uploaded?.fileData
+                ? `<div class="bvg-doc-chip"><span><i class="ti ti-file" aria-hidden="true"></i> ${doc.label}</span><button type="button" onclick="viewBvgDocument('${employee.id}','${doc.key}')"><i class="ti ti-eye" aria-hidden="true"></i> View</button><a href="${uploaded.fileData}" download="${uploaded.fileName}"><i class="ti ti-download" aria-hidden="true"></i> Download</a></div>`
+                : `<span>${doc.label}: missing</span>`;
+            }).join('')}</div>
+            ${employee.bvg?.note?`<div class="read-time warning">${employee.bvg.note}</div>`:''}
+          </div>
+          <div class="ri-right">
+            <span class="badge ${employee.bvg?.status==='approved'?'b-active':employee.bvg?.status==='submitted'?'b-pending':'b-archived'}">${bvgStatusLabel(employee.bvg?.status)}</span>
+            <button class="btn sm pri" onclick="approveBvg('${employee.id}')" ${employee.bvg?.status==='approved'||!stats.complete?'disabled':''}><i class="ti ti-check" aria-hidden="true"></i> Approve</button>
+            <button class="btn sm danger" onclick="rejectBvg('${employee.id}')" ${employee.bvg?.status==='approved'?'disabled':''}><i class="ti ti-x" aria-hidden="true"></i> Request changes</button>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+}
+
+window.viewBvgDocument=function(employeeId,docKey){
+  const employee=employeeById(employeeId);
+  const docMeta=BVG_DOCUMENTS.find(item=>item.key===docKey);
+  const uploaded=employee?.bvg?.docs?.[docKey];
+  if(!uploaded?.fileData){
+    toast('Document is not available');
+    return;
+  }
+  const title=document.getElementById('bvgPreviewTitle');
+  const body=document.getElementById('bvgPreviewBody');
+  const download=document.getElementById('bvgPreviewDownload');
+  if(!title||!body||!download){
+    window.open(uploaded.fileData,'_blank','noopener');
+    return;
+  }
+  title.textContent=`${employee.name} - ${docMeta?.label||'BVG document'}`;
+  download.href=uploaded.fileData;
+  download.download=uploaded.fileName||`${docKey}-document`;
+  const source=uploaded.fileData;
+  const fileName=(uploaded.fileName||'').toLowerCase();
+  const mime=(source.match(/^data:([^;]+);/)||[])[1]||'';
+  if(mime.startsWith('image/')||/\.(png|jpe?g|webp|gif)$/i.test(fileName)){
+    body.innerHTML=`<img class="bvg-preview-img" src="${source}" alt="${docMeta?.label||'BVG document'} preview">`;
+  }else if(mime==='application/pdf'||fileName.endsWith('.pdf')){
+    body.innerHTML=`<iframe class="bvg-preview-frame" src="${source}" title="${docMeta?.label||'BVG document'} preview"></iframe>`;
+  }else{
+    body.innerHTML=`<div class="empty-state"><i class="ti ti-file-download" aria-hidden="true"></i><strong>Preview is not available for this file type.</strong><span>${uploaded.fileName||'Uploaded document'} can be downloaded and opened on your computer.</span></div>`;
+  }
+  openM('mBvgPreview');
+};
+
+window.approveBvg=function(id){
+  const employee=employeeById(id);
+  if(!employee) return;
+  employee.bvg=employee.bvg||{docs:{}};
+  if(!bvgStats(employee).complete){toast('All BVG documents are required before approval');return;}
+  employee.bvg.status='approved';
+  employee.bvg.reviewedAt=new Date().toISOString();
+  employee.bvg.reviewedBy=currentUser?.name||'HR';
+  employee.bvg.note='';
+  saveStore();
+  renderAdminBvg();
+  renderEmpTable();
+  toast(`${employee.name} can now access the employee portal`);
+};
+
+window.rejectBvg=function(id){
+  const employee=employeeById(id);
+  if(!employee) return;
+  const note=prompt(`What should ${employee.name} correct or re-upload?`,'Please re-upload the unclear document.');
+  if(note===null) return;
+  employee.bvg=employee.bvg||{docs:{}};
+  employee.bvg.status='rejected';
+  employee.bvg.note=note.trim()||'Please review and re-upload the required BVG documents.';
+  employee.bvg.reviewedAt=new Date().toISOString();
+  employee.bvg.reviewedBy=currentUser?.name||'HR';
+  saveStore();
+  renderAdminBvg();
+  toast('Changes requested');
+};
+
 window.renderEmpTable=function(){
   document.getElementById('empTotal').textContent=store.employees.length;
   document.getElementById('empActive').textContent=store.employees.filter(e=>e.status==='Active').length;
   document.getElementById('hrTotal').textContent=store.hrs.length;
   document.getElementById('empOpenQ').textContent=store.queries.filter(q=>q.status!=='resolved').length;
-  document.getElementById('employeeNames').innerHTML=store.employees.map(e=>{const pr=policyReadStats(e);return `<div class="row-item policy-row"><div><div class="ri-name">${e.name}</div><div class="ri-meta">${e.email} - ${e.dept} - Policy read ${pr.read}/${pr.total}</div>${policyReadDetails(e)}</div><div class="ri-right"><span class="badge ${pr.total&&pr.read===pr.total?'b-active':'b-pending'}">${pr.total&&pr.read===pr.total?'All read':'Pending'}</span><span class="badge ${e.status==='Active'?'b-active':'b-archived'}">${e.status}</span><button class="btn sm danger" onclick="deleteEmployee('${e.id}')" title="Delete employee"><i class="ti ti-trash" aria-hidden="true"></i> Delete</button></div></div>`;}).join('');
-  document.getElementById('eTable').innerHTML=`<thead><tr><th>Name</th><th>Company email</th><th>Dept</th><th>Role</th><th>Policy read</th><th>Annual left</th><th>Sick left</th><th>WFH left</th><th>Password</th><th>Status</th><th>Action</th></tr></thead><tbody>${store.employees.map(e=>{const l=e.leave, pr=policyReadStats(e);return `<tr><td style="font-weight:500">${e.name}</td><td>${e.email}</td><td style="color:var(--color-text-secondary)">${e.dept}</td><td>${e.role||'-'}</td><td><span class="badge ${pr.total&&pr.read===pr.total?'b-active':'b-pending'}">${pr.read}/${pr.total}</span></td><td>${l.annual.t-l.annual.u}</td><td>${l.sick.t-l.sick.u}</td><td>${l.wfh.t-l.wfh.u}</td><td><span class="badge ${e.mustChangePassword?'b-pending':'b-active'}">${e.mustChangePassword?'Reset required':'Private'}</span></td><td><span class="badge ${e.status==='Active'?'b-active':'b-archived'}">${e.status}</span></td><td><div class="table-actions"><button class="btn sm" onclick="toggleEmployee('${e.id}')">${e.status==='Active'?'Deactivate':'Activate'}</button><button class="btn sm danger" onclick="deleteEmployee('${e.id}')" title="Delete employee"><i class="ti ti-trash" aria-hidden="true"></i></button></div></td></tr>`;}).join('')}</tbody>`;
+  document.getElementById('employeeNames').innerHTML=store.employees.map(e=>{const pr=policyReadStats(e);return `<div class="row-item policy-row"><div><div class="ri-name">${e.name}</div><div class="ri-meta">${e.email} - ${e.dept} - Policies acknowledged ${pr.read}/${pr.total}</div></div><div class="ri-right"><span class="badge ${pr.total&&pr.read===pr.total?'b-active':'b-pending'}">${pr.read}/${pr.total} read</span><span class="badge ${e.status==='Active'?'b-active':'b-archived'}">${e.status}</span><button class="btn sm danger" onclick="deleteEmployee('${e.id}')" title="Delete employee"><i class="ti ti-trash" aria-hidden="true"></i> Delete</button></div></div>`;}).join('');
+  document.getElementById('eTable').innerHTML=`<thead><tr><th>Name</th><th>Company email</th><th>Dept</th><th>Role</th><th>Policy read</th><th>BVG</th><th>Annual left</th><th>Sick left</th><th>WFH left</th><th>Password</th><th>Status</th><th>Action</th></tr></thead><tbody>${store.employees.map(e=>{const l=e.leave, pr=policyReadStats(e);return `<tr><td style="font-weight:500">${e.name}</td><td>${e.email}</td><td style="color:var(--color-text-secondary)">${e.dept}</td><td>${e.role||'-'}</td><td><span class="badge ${pr.total&&pr.read===pr.total?'b-active':'b-pending'}">${pr.read}/${pr.total}</span></td><td><span class="badge ${e.bvg?.status==='approved'?'b-active':'b-pending'}">${bvgStatusLabel(e.bvg?.status)}</span></td><td>${l.annual.t-l.annual.u}</td><td>${l.sick.t-l.sick.u}</td><td>${l.wfh.t-l.wfh.u}</td><td><span class="badge ${e.mustChangePassword?'b-pending':'b-active'}">${e.mustChangePassword?'Reset required':'Private'}</span></td><td><span class="badge ${e.status==='Active'?'b-active':'b-archived'}">${e.status}</span></td><td><div class="table-actions"><button class="btn sm" onclick="toggleEmployee('${e.id}')">${e.status==='Active'?'Deactivate':'Activate'}</button><button class="btn sm danger" onclick="deleteEmployee('${e.id}')" title="Delete employee"><i class="ti ti-trash" aria-hidden="true"></i></button></div></td></tr>`;}).join('')}</tbody>`;
+  if(currentUser?.portal==='hr'&&!employeeSheetSyncing) setTimeout(()=>syncEmployeesFromBackendSheet(false),0);
+};
+
+function tempPassword(){
+  return `HRP${Math.random().toString(36).slice(2,8).toUpperCase()}${Math.floor(10+Math.random()*90)}`;
+}
+
+function createEmployeeRecord({name,email,dept,role,tempPass}){
+  return {
+    id:`emp-${store.nextEmployeeId++}`,
+    name,
+    email,
+    password:tempPass,
+    mustChangePassword:true,
+    dept:dept||'General',
+    role:role||'Employee',
+    status:'Active',
+    manager:currentUser?.name||'HR',
+    policyReads:{},
+    dismissedNotifications:[],
+    documents:[],
+    gameProgress:null,
+    bvg:{status:'pending',docs:{},note:'',submittedAt:'',reviewedAt:'',reviewedBy:''},
+    leave:{annual:{u:0,t:18},sick:{u:0,t:8},wfh:{u:0,t:12},comp:{u:0,t:3}}
+  };
+}
+
+async function sendEmployeeWelcomeEmail(employee,tempPass){
+  const res=await fetch('/api/send-welcome-email',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({
+      companyName:COMPANY.companyName,
+      portalName:COMPANY.portalName,
+      portalUrl:location.origin,
+      employee:{name:employee.name,email:employee.email,tempPassword:tempPass}
+    })
+  });
+  const data=await res.json().catch(()=>({}));
+  if(!res.ok) throw new Error(data.error||'Email could not be sent');
+  return data;
+}
+
+async function applyEmployeeRows(rows,{resultId='bulkEmpResult',manual=false,source='upload'}={}){
+  const result=document.getElementById(resultId);
+  const knownEmails=new Set([...store.employees,...store.hrs].map(user=>user.email.toLowerCase()));
+  const created=[];
+  const updated=[];
+  const skipped=[];
+
+  rows.forEach(row=>{
+    const email=(row.email||'').trim().toLowerCase();
+    const pass=(row.tempPass||document.getElementById('empBulkDefaultPass')?.value||'emp123'||tempPassword()).trim();
+    if(!row.name||!isEmail(email)){
+      skipped.push(`Line ${row.line||'?'}: invalid name or email`);
+      return;
+    }
+    if(pass.length<4){
+      skipped.push(`Line ${row.line||'?'}: temporary password too short`);
+      return;
+    }
+    const existing=store.employees.find(employee=>employee.email.toLowerCase()===email);
+    if(existing){
+      existing.name=row.name;
+      existing.dept=row.dept||existing.dept||'General';
+      existing.role=row.role||existing.role||'Employee';
+      updated.push(existing);
+      return;
+    }
+    if(knownEmails.has(email)){
+      skipped.push(`Line ${row.line||'?'}: ${email} already exists`);
+      return;
+    }
+    knownEmails.add(email);
+    const employee=createEmployeeRecord({name:row.name,email,dept:row.dept,role:row.role,tempPass:pass});
+    store.employees.push(employee);
+    created.push({employee,tempPass:pass,line:row.line});
+  });
+
+  if(!created.length&&!updated.length){
+    if(manual&&result) result.innerHTML=`<div class="hint-box danger-soft">No employee changes found.${skipped.length?`<br>${skipped.slice(0,8).join('<br>')}`:''}</div>`;
+    return {created,updated,skipped,emailResults:[]};
+  }
+
+  try{
+    saveStore();
+  }catch(err){
+    const createdIds=new Set(created.map(item=>item.employee.id));
+    store.employees=store.employees.filter(employee=>!createdIds.has(employee.id));
+    toast('Employees could not be saved. Browser storage may be full.');
+    return {created:[],updated:[],skipped:[...skipped,'Browser storage may be full'],emailResults:[]};
+  }
+
+  renderEmpTable();
+  if(created.length) toast(`${created.length} new employee(s) created from ${source}. Sending emails...`);
+
+  const emailResults=[];
+  for(const item of created){
+    try{
+      await sendEmployeeWelcomeEmail(item.employee,item.tempPass);
+      emailResults.push({ok:true,email:item.employee.email});
+    }catch(err){
+      emailResults.push({ok:false,email:item.employee.email,error:err.message});
+    }
+  }
+
+  const sent=emailResults.filter(item=>item.ok).length;
+  const failed=emailResults.filter(item=>!item.ok);
+  if(result&&(manual||created.length||updated.length)){
+    result.innerHTML=`<div class="hint-box ${failed.length?'':'success-soft'}"><strong>${created.length} created, ${updated.length} updated.</strong><br>${sent} welcome emails sent.${failed.length?`<br>${failed.length} email(s) failed: ${failed.slice(0,5).map(item=>`${item.email} - ${item.error}`).join('<br>')}`:''}${skipped.length?`<br><br>Skipped rows:<br>${skipped.slice(0,8).join('<br>')}`:''}</div>`;
+  }
+  if(manual) toast(failed.length?`${sent}/${created.length} emails sent. Check sync summary.`:`${source} sync complete.`);
+  return {created,updated,skipped,emailResults};
+}
+
+window.syncEmployeesFromBackendSheet=async function(manual=false){
+  if(employeeSheetSyncing) return;
+  employeeSheetSyncing=true;
+  const result=document.getElementById('sheetSyncResult');
+  try{
+    const res=await fetch('/api/employee-sheet',{cache:'no-store'});
+    const data=await res.json().catch(()=>({}));
+    if(!res.ok) throw new Error(data.error||'Employee sheet could not be read');
+    if(!manual&&data.modifiedAt&&data.modifiedAt===lastEmployeeSheetModifiedAt) return;
+    lastEmployeeSheetModifiedAt=data.modifiedAt||Date.now();
+    const rows=Array.isArray(data.employees)?data.employees:[];
+    if(!rows.length){
+      if(manual&&result) result.innerHTML=`<div class="hint-box">Connected to ${data.path||'employee sheet'}, but no employee rows were found.</div>`;
+      return;
+    }
+    await applyEmployeeRows(rows,{resultId:'sheetSyncResult',manual,source:'Excel sheet'});
+  }catch(err){
+    if(manual&&result) result.innerHTML=`<div class="hint-box danger-soft">${err.message}</div>`;
+    if(manual) toast(`Excel sync failed: ${err.message}`);
+  }finally{
+    employeeSheetSyncing=false;
+  }
+};
+
+function parseEmployeeCsv(text){
+  const rows=[];
+  let row=[],cell='',quoted=false;
+  for(let i=0;i<text.length;i++){
+    const char=text[i],next=text[i+1];
+    if(char==='"'&&quoted&&next==='"'){
+      cell+='"';
+      i++;
+    }else if(char==='"'){
+      quoted=!quoted;
+    }else if(char===','&&!quoted){
+      row.push(cell.trim());
+      cell='';
+    }else if((char==='\n'||char==='\r')&&!quoted){
+      if(char==='\r'&&next==='\n') i++;
+      row.push(cell.trim());
+      if(row.some(value=>value)) rows.push(row);
+      row=[];
+      cell='';
+    }else{
+      cell+=char;
+    }
+  }
+  row.push(cell.trim());
+  if(row.some(value=>value)) rows.push(row);
+  if(!rows.length) return [];
+  const header=rows[0].map(value=>value.toLowerCase().replace(/\s+/g,''));
+  const hasHeader=header.includes('email')||header.includes('companyemail')||header.includes('name')||header.includes('fullname');
+  const dataRows=hasHeader?rows.slice(1):rows;
+  const indexOf=(names, fallback)=>names.map(name=>header.indexOf(name)).find(index=>index>=0) ?? fallback;
+  const indexes={
+    name:hasHeader?indexOf(['name','fullname','employee'],0):0,
+    email:hasHeader?indexOf(['email','companyemail','loginid','mail'],1):1,
+    dept:hasHeader?indexOf(['department','dept'],2):2,
+    role:hasHeader?indexOf(['role','designation','jobtitle'],3):3,
+    tempPass:hasHeader?indexOf(['temppassword','temporarypassword','password','temppass'],4):4
+  };
+  return dataRows.map((cells,line)=>({
+    line:hasHeader?line+2:line+1,
+    name:(cells[indexes.name]||'').trim(),
+    email:(cells[indexes.email]||'').trim().toLowerCase(),
+    dept:(cells[indexes.dept]||'').trim(),
+    role:(cells[indexes.role]||'').trim(),
+    tempPass:(cells[indexes.tempPass]||'').trim()
+  }));
+}
+
+async function parseEmployeeUploadFile(file){
+  if(/\.(csv)$/i.test(file.name)||file.type==='text/csv'){
+    return parseEmployeeCsv(await file.text());
+  }
+  const fileData=await fileToDataUrl(file);
+  const res=await fetch('/api/parse-employee-upload',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({fileName:file.name,fileData})
+  });
+  const data=await res.json().catch(()=>({}));
+  if(!res.ok) throw new Error(data.error||'Employee file could not be parsed');
+  return Array.isArray(data.employees)?data.employees:[];
+}
+
+window.downloadEmployeeCsvTemplate=function(){
+  const csv='name,email,department,role,tempPassword\nAarav Mehta,aarav@company.com,Engineering,Developer,\nNisha Rao,nisha@company.com,Finance,Analyst,Welcome123';
+  const url=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+  const link=document.createElement('a');
+  link.href=url;
+  link.download='hrpulse-employee-bulk-template.csv';
+  link.click();
+  URL.revokeObjectURL(url);
+};
+
+window.bulkUploadEmployees=async function(){
+  const file=document.getElementById('empBulkFile')?.files?.[0];
+  const defaultPass=(document.getElementById('empBulkDefaultPass')?.value||'emp123').trim();
+  const result=document.getElementById('bulkEmpResult');
+  if(!file){toast('Choose a CSV or Excel file');return;}
+  if(defaultPass.length<4){toast('Default temporary password must be at least 4 characters');return;}
+  let rows=[];
+  try{
+    if(result) result.innerHTML='<div class="hint-box">Reading employee file...</div>';
+    rows=await parseEmployeeUploadFile(file);
+  }catch(err){
+    if(result) result.innerHTML=`<div class="hint-box danger-soft">${err.message}</div>`;
+    toast(err.message);
+    return;
+  }
+  if(!rows.length){toast('File has no employee rows');return;}
+  rows.forEach(row=>{ if(!row.tempPass) row.tempPass=defaultPass; });
+  await applyEmployeeRows(rows,{resultId:'bulkEmpResult',manual:true,source:file.name});
+  document.getElementById('empBulkFile').value='';
 };
 
 window.addEmployee=async function(){
@@ -1228,7 +1853,7 @@ window.addEmployee=async function(){
   if(!name||!isEmail(email)){toast('Enter a valid employee name and email');return;}
   if(tempPass.length<4){toast('Temporary password must be at least 4 characters');return;}
   if([...store.employees,...store.hrs].some(u=>u.email.toLowerCase()===email)){toast('Email already exists');return;}
-  const employee={id:`emp-${store.nextEmployeeId++}`,name,email,password:tempPass,mustChangePassword:true,dept:document.getElementById('empDept').value.trim()||'General',role:document.getElementById('empRole').value.trim()||'Employee',status:'Active',manager:currentUser?.name||'HR',policyReads:{},dismissedNotifications:[],documents:[],gameProgress:null,leave:{annual:{u:0,t:18},sick:{u:0,t:8},wfh:{u:0,t:12},comp:{u:0,t:3}}};
+  const employee=createEmployeeRecord({name,email,tempPass,dept:document.getElementById('empDept').value.trim(),role:document.getElementById('empRole').value.trim()});
   store.employees.push(employee);
   try{
     saveStore();
@@ -1243,21 +1868,10 @@ window.addEmployee=async function(){
   renderEmpTable();
   toast('Employee login created. Sending email...');
   try{
-    const res=await fetch('/api/send-welcome-email',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({
-        companyName:COMPANY.companyName,
-        portalName:COMPANY.portalName,
-        portalUrl:location.origin,
-        employee:{name,email,tempPassword:tempPass}
-      })
-    });
-    const data=await res.json();
-    if(!res.ok) throw new Error(data.error||'Email could not be sent');
+    await sendEmployeeWelcomeEmail(employee,tempPass);
     toast('Welcome email sent to employee.');
   }catch(err){
-    toast('Employee saved. Email not sent: check SMTP settings.');
+    toast(`Employee saved. Email not sent: ${err.message}`);
   }
 };
 window.toggleEmployee=function(id){
@@ -1362,8 +1976,11 @@ window.renderEPolicies=function(){
   activePolicies.forEach(p=>{
     const d=document.createElement('div');
     d.className='card';
-    const readAt=employee?.policyReads?.[p.id];
-    d.innerHTML=`<div class="card-hd"><div class="card-title"><i class="ti ti-file-text" aria-hidden="true"></i> ${p.name}</div><span class="badge b-active">${p.cat}</span></div><div style="font-size:13px;color:var(--color-text-secondary);line-height:1.6">${policySummary(p)}</div>${policyAttachmentLink(p)}<div style="font-size:11px;color:var(--color-text-tertiary);margin-top:8px">Effective ${p.date}</div><label class="policy-read"><input type="checkbox" ${readAt?'checked':''} onchange="togglePolicyRead(${p.id},this.checked)"> I have read and understood this policy</label>${readAt?`<div class="read-time">Acknowledged ${formatQueryTime(readAt)}</div>`:''}`;
+    const readValue=policyReadValue(employee,p.id);
+    const readAt=typeof readValue==='string'?readValue:readValue?.acknowledgedAt;
+    const current=isPolicyAcknowledgedCurrent(employee,p);
+    const stale=readAt&&!current;
+    d.innerHTML=`<div class="card-hd"><div class="card-title"><i class="ti ti-file-text" aria-hidden="true"></i> ${p.name}</div><span class="badge b-active">${p.cat}</span></div><div style="font-size:13px;color:var(--color-text-secondary);line-height:1.6">${policySummary(p)}</div>${policyAttachmentLink(p)}<div style="font-size:11px;color:var(--color-text-tertiary);margin-top:8px">Effective ${p.date} - Last updated ${formatQueryTime(p.updatedAt||p.date)}</div><label class="policy-read ${current?'locked':''}"><input type="checkbox" ${current?'checked disabled':''} onchange="togglePolicyRead(${p.id},this.checked)"> ${current?'Policy acknowledged and locked':'I have read and understood this policy'}</label>${current?`<div class="read-time">Acknowledged ${formatQueryTime(readAt)}. You cannot untick this unless HR updates the policy.</div>`:stale?`<div class="read-time warning">Policy was updated after your last acknowledgement. Please read and acknowledge again.</div>`:''}`;
     el.appendChild(d);
   });
 };
@@ -1371,9 +1988,16 @@ window.renderEPolicies=function(){
 window.togglePolicyRead=function(policyId,checked){
   const employee=employeeById(currentUser?.id);
   if(!employee){toast('Please sign in again');return;}
+  const policy=store.policies.find(p=>String(p.id)===String(policyId));
+  if(!policy){toast('Policy not found');return;}
   employee.policyReads=employee.policyReads||{};
+  if(!checked&&isPolicyAcknowledgedCurrent(employee,policy)){
+    renderEPolicies();
+    toast('Acknowledged policies are locked until HR updates them');
+    return;
+  }
   if(checked) employee.policyReads[policyId]=new Date().toISOString();
-  else delete employee.policyReads[policyId];
+  else if(!isPolicyAcknowledgedCurrent(employee,policy)) delete employee.policyReads[policyId];
   saveStore();
   renderEPolicies();
   renderEmployeeHome();
@@ -1381,36 +2005,81 @@ window.togglePolicyRead=function(policyId,checked){
 };
 
 window.initChat=function(){
+  chatHistory=[];
   document.getElementById('chatMsgs').innerHTML='';
   document.getElementById('chatErr').style.display='none';
   const e=employeeById(currentUser?.id)||store.employees[0];
-  addBot(`Hi ${e.name.split(' ')[0]}! I can answer you from the active company policies. What would you like to know?`);
+  addBot(`Hi ${e.name.split(' ')[0]}! I can answer from live HRPulse data: policies, leaves, documents, your queries, and announcements. What would you like to know?`);
+  checkAiStatus();
+};
+
+function setAiStatus(state,text){
+  const el=document.getElementById('aiStatus');
+  if(!el) return;
+  el.className=`ai-status ${state}`;
+  el.innerHTML=`<i class="ti ${state==='live'?'ti-circle-check':state==='thinking'?'ti-loader-2':'ti-alert-circle'}" aria-hidden="true"></i> ${text}`;
+}
+
+function aiPayload(question,employee){
+  const docs=(employee.documents||[]).map(doc=>({type:doc.type,title:doc.title,fileName:doc.fileName,uploadedAt:doc.uploadedAt,acknowledgedAt:doc.acknowledgedAt||''}));
+  return {
+    question,
+    employee:{
+      name:employee.name,
+      email:employee.email,
+      dept:employee.dept,
+      role:employee.role,
+      manager:employee.manager,
+      leave:employee.leave,
+      profileCompletion:profileCompletion(employee),
+      gameProgress:employee.gameProgress||null,
+      learningCompletions:employee.learningCompletions||[]
+    },
+    policies:store.policies.filter(p=>p.status==='Active'),
+    unreadPolicies:unreadPolicies(employee).map(p=>({id:p.id,name:p.name,cat:p.cat})),
+    queries:employeeQueries(employee).slice(0,8),
+    documents:docs,
+    events:upcomingEvents().slice(0,5),
+    news:latestNews().slice(0,5),
+    history:chatHistory.slice(-8)
+  };
+}
+
+window.checkAiStatus=async function(){
+  try{
+    setAiStatus('thinking','Checking live AI...');
+    const res=await fetch('/api/ai-status');
+    const data=await res.json();
+    if(data.connected) setAiStatus('live',`Live AI connected (${data.provider||'ai'}: ${data.model})`);
+    else if(data.provider==='ollama') setAiStatus('offline',`Start Ollama and run: ollama pull ${data.model}`);
+    else setAiStatus('offline','Add OPENAI_API_KEY in .env to enable live AI');
+  }catch(err){
+    setAiStatus('offline','Server AI endpoint not reachable');
+  }
 };
 
 window.sendChat=async function(){
   if(botBusy) return;
   const inp=document.getElementById('chatIn'), msg=inp.value.trim();
   if(!msg) return;
-  inp.value='';addUser(msg);botBusy=true;showTyping();
+  inp.value='';addUser(msg);botBusy=true;showTyping();setAiStatus('thinking','Live AI is thinking...');
   try{
     const e=employeeById(currentUser?.id)||store.employees[0];
     const res=await fetch('/api/hr-policy-ai',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({
-        question:msg,
-        employee:{name:e.name,leave:e.leave},
-        policies:store.policies.filter(p=>p.status==='Active')
-      })
+      body:JSON.stringify(aiPayload(msg,e))
     });
     const data=await res.json();
     if(!res.ok) throw new Error(data.error||'AI request failed');
-    hideTyping();botBusy=false;addBot(data.answer);
+    chatHistory.push({role:'user',content:msg},{role:'assistant',content:data.answer});
+    hideTyping();botBusy=false;setAiStatus('live',`Live AI connected (${data.source||'ai'}: ${data.model||'model'})`);addBot(data.answer);
   }catch(err){
     hideTyping();botBusy=false;
     const errBox=document.getElementById('chatErr');
-    errBox.textContent='Real AI is not connected yet. Showing the built-in policy answer instead.';
+    errBox.textContent=`Live AI is unavailable: ${err.message}. Showing the built-in HRPulse answer instead.`;
     errBox.style.display='block';
+    setAiStatus('offline','Live AI unavailable - using built-in answers');
     addBot(localReply(msg));
   }
 };
@@ -1681,9 +2350,51 @@ const wordWonderLevels=[
   {theme:'Growth track',letters:['G','R','O','W','T','H'],words:['GROWTH','GROW','WORTH','ROW','HOT','TOW']},
   {theme:'Payroll desk',letters:['P','A','Y','R','O','L','L'],words:['PAYROLL','PAY','ROLL','PLAY','LOYAL','RAY','LAY']},
   {theme:'Culture club',letters:['C','U','L','T','U','R','E'],words:['CULTURE','CURE','TRUE','RULE','CUTE','LURE']},
-  {theme:'Talent room',letters:['T','A','L','E','N','T'],words:['TALENT','LATE','LEAN','TENT','ANTE','LANE','TEAL']},
+  {theme:'Talent room',letters:['T','A','L','E','N','T'],words:['TALENT','LATE','LEAN','TENT','ANT','LANE','TEAL']},
   {theme:'Benefits bay',letters:['B','E','N','E','F','I','T'],words:['BENEFIT','FIT','NET','TEN','BITE','FINE','BEET']},
   {theme:'Office flow',letters:['O','F','F','I','C','E'],words:['OFFICE','ICE','OFF','FOE','FIFE','COIF']}
+];
+const wordWonderGeneratedLevels=[
+  {theme:'Career climb',letters:['C','A','R','E','E','R'],words:['CAREER','CARE','RACE','ACRE','RARE','EAR','ERA']},
+  {theme:'Hiring round',letters:['H','I','R','I','N','G'],words:['HIRING','RING','GRIN','GIRN','HIN','GIN']},
+  {theme:'Mentor map',letters:['M','E','N','T','O','R'],words:['MENTOR','METRO','TENOR','TONER','MORE','ROTE','TONE']},
+  {theme:'Bonus lane',letters:['B','O','N','U','S'],words:['BONUS','SNOB','ONUS','BUN','SUN','NUB']},
+  {theme:'Review desk',letters:['R','E','V','I','E','W'],words:['REVIEW','VIEW','VEER','WIRE','WEIR','EVER']},
+  {theme:'Skill lab',letters:['S','K','I','L','L'],words:['SKILL','SILK','KILL','ILL','SKI']},
+  {theme:'Training hub',letters:['T','R','A','I','N'],words:['TRAIN','RAIN','RANT','TARN','ANTI','AIR','TIN']},
+  {theme:'Reward room',letters:['R','E','W','A','R','D'],words:['REWARD','DRAW','WARD','WARE','DEAR','DARE','READ']},
+  {theme:'Sprint board',letters:['S','P','R','I','N','T'],words:['SPRINT','PRINT','STRIP','TRIPS','TINS','RIP','PIN']},
+  {theme:'Project pod',letters:['P','R','O','J','E','C','T'],words:['PROJECT','PRO','JET','TOE','COT','CORE','ROPE']},
+  {theme:'Meeting mode',letters:['M','E','E','T','I','N','G'],words:['MEETING','MEET','MINE','TIME','TINGE','ITEM','TEN']},
+  {theme:'Survey stack',letters:['S','U','R','V','E','Y'],words:['SURVEY','SURE','USER','VERY','RUE','YES']},
+  {theme:'Roster route',letters:['R','O','S','T','E','R'],words:['ROSTER','ROSE','ROTE','REST','SORE','TORE','ERR']},
+  {theme:'Notice nook',letters:['N','O','T','I','C','E'],words:['NOTICE','NOTE','TONE','CITE','COIN','ICON','ICE']},
+  {theme:'Salary suite',letters:['S','A','L','A','R','Y'],words:['SALARY','SLAY','RAYS','LAY','SAY','RAY']},
+  {theme:'Holiday hill',letters:['H','O','L','I','D','A','Y'],words:['HOLIDAY','DAILY','IDOL','HOLD','LOAD','LADY','DAY']},
+  {theme:'Wellness wave',letters:['W','E','L','L','N','E','S','S'],words:['WELLNESS','WELL','SELL','LESS','NEW','SEWN','SEW']},
+  {theme:'Portal path',letters:['P','O','R','T','A','L'],words:['PORTAL','PLOT','ALTO','ORAL','TARP','RAPT','LAP']},
+  {theme:'Ticket trail',letters:['T','I','C','K','E','T'],words:['TICKET','TICK','KITE','KITT','CITE','TIE','KIT']},
+  {theme:'Query quest',letters:['Q','U','E','R','Y'],words:['QUERY','RUE','RYE','YER','QUE']},
+  {theme:'Finance flow',letters:['F','I','N','A','N','C','E'],words:['FINANCE','FINE','CAFE','CANE','NICE','FACE','FAN']},
+  {theme:'Admin arena',letters:['A','D','M','I','N'],words:['ADMIN','MAIN','MIND','MAID','DAM','AID']},
+  {theme:'People pulse',letters:['P','E','O','P','L','E'],words:['PEOPLE','PEEL','POLE','LOPE','PLOP','PEEP']},
+  {theme:'Health help',letters:['H','E','A','L','T','H'],words:['HEALTH','HEAL','HEAT','HATE','LATE','TEAL','EAT']},
+  {theme:'Target track',letters:['T','A','R','G','E','T'],words:['TARGET','GREAT','GRATE','TREAT','GEAR','RATE','TEAR']},
+  {theme:'Budget bay',letters:['B','U','D','G','E','T'],words:['BUDGET','BUDGE','DEBUT','TUBE','DUET','GET','BET']},
+  {theme:'Office orbit',letters:['O','R','B','I','T'],words:['ORBIT','TRIO','RIOT','BRIO','BIT','ROB']},
+  {theme:'Report ridge',letters:['R','E','P','O','R','T'],words:['REPORT','PORT','ROPE','TORE','POET','REPO','TOP']},
+  {theme:'Growth grid',letters:['G','R','I','D'],words:['GRID','GIRD','RID','DIG','RIG']},
+  {theme:'Annual arc',letters:['A','N','N','U','A','L'],words:['ANNUAL','ANNAL','LUNA','ULAN','NUN','ALAN']},
+  {theme:'Policy peak',letters:['P','E','A','K'],words:['PEAK','PEA','APE','AKE']},
+  {theme:'Shift shine',letters:['S','H','I','F','T'],words:['SHIFT','FISH','HITS','SIFT','HIS','FIT']},
+  {theme:'Bonus bridge',letters:['B','R','I','D','G','E'],words:['BRIDGE','BRIE','BIRD','RIDE','GRID','DIRE','BIG']},
+  {theme:'Culture curve',letters:['C','U','R','V','E'],words:['CURVE','CURE','RUE','REV','CUE']},
+  {theme:'Vision vault',letters:['V','I','S','I','O','N'],words:['VISION','IONS','VINO','SON','SIN','ION']},
+  {theme:'Mission map',letters:['M','I','S','S','I','O','N'],words:['MISSION','MISS','IONS','MINI','MOSS','SIM','ION']},
+  {theme:'Payroll path',letters:['P','A','T','H'],words:['PATH','HAT','PAT','TAP','APT']},
+  {theme:'Workplace way',letters:['W','A','Y'],words:['WAY','YAW','AW']},
+  {theme:'Benefit beam',letters:['B','E','A','M'],words:['BEAM','MAE','ABE','AM','ME']},
+  {theme:'Feedback field',letters:['F','I','E','L','D'],words:['FIELD','FILE','LIED','DELI','LID','DIE']}
 ];
 let wordWonderLevel=0;
 let wordWonderFound=[];
@@ -1692,13 +2403,33 @@ let wordWonderLetters=[];
 let wordWonderStarted=false;
 
 function getWordWonderLevel(){
-  const base=wordWonderLevels[wordWonderLevel % wordWonderLevels.length];
-  const cycle=Math.floor(wordWonderLevel / wordWonderLevels.length);
+  if(wordWonderLevel<wordWonderLevels.length){
+    const fixed=wordWonderLevels[wordWonderLevel];
+    return {
+      theme:fixed.theme,
+      letters:[...fixed.letters],
+      words:[...fixed.words]
+    };
+  }
+  const generatedIndex=(wordWonderLevel-wordWonderLevels.length)%wordWonderGeneratedLevels.length;
+  const cycle=Math.floor((wordWonderLevel-wordWonderLevels.length)/wordWonderGeneratedLevels.length);
+  const base=wordWonderGeneratedLevels[generatedIndex];
+  const words=[...base.words];
+  if(cycle){
+    const rotateBy=cycle%words.length;
+    words.push(...words.splice(0,rotateBy));
+  }
   return {
     theme:cycle?`${base.theme} ${cycle+1}`:base.theme,
     letters:[...base.letters],
-    words:[...base.words]
+    words
   };
+}
+
+function sameWordLetterBag(left=[],right=[]){
+  if(left.length!==right.length) return false;
+  const normalize=letters=>[...letters].map(letter=>String(letter).toUpperCase()).sort().join('');
+  return normalize(left)===normalize(right);
 }
 
 function currentGameEmployee(){
@@ -1739,9 +2470,10 @@ function loadWordWonderProgress(){
   }
   wordWonderStarted=Boolean(progress.started);
   wordWonderLevel=Number.isInteger(progress.level)?progress.level:0;
-  wordWonderFound=Array.isArray(progress.found)?progress.found.filter(Boolean):[];
+  const level=getWordWonderLevel();
+  wordWonderFound=Array.isArray(progress.found)?progress.found.filter(word=>level.words.includes(word)):[];
   wordWonderPoints=Number(progress.points)||0;
-  wordWonderLetters=Array.isArray(progress.letters)&&progress.letters.length?progress.letters:[...getWordWonderLevel().letters];
+  wordWonderLetters=Array.isArray(progress.letters)&&sameWordLetterBag(progress.letters,level.letters)?progress.letters:[...level.letters];
 }
 
 function saveWordWonderProgress(){
@@ -1919,7 +2651,17 @@ window.nextWonderLevel=function(){
   renderWordWonderRound('New level unlocked.');
 };
 
+function bindPolicyImporter(){
+  const button=document.getElementById('policyTokenizeBtn');
+  if(!button) return;
+  button.onclick=event=>{
+    event.preventDefault();
+    window.importPolicies();
+  };
+}
+
 enhanceUI();
+bindPolicyImporter();
 selRole('admin');
 saveStore();
 
