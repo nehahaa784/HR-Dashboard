@@ -12,7 +12,7 @@
 
 
 
-<div style="position:relative;min-height:640px;overflow:hidden">
+<div id="appShell" class="app-shell">
 
 <!-- LOGIN -->
 <div class="screen active" id="s-login">
@@ -105,6 +105,7 @@
         </div>
         <div class="card">
           <div class="card-hd"><div class="card-title"><i class="ti ti-folder-open" aria-hidden="true"></i> Uploaded documents</div></div>
+          <div class="fi admin-doc-search"><label>Search employee</label><input id="docEmployeeSearch" placeholder="Search by employee name, email, or department" oninput="renderAdminDocuments()"></div>
           <div id="adminDocList"></div>
         </div>
       </div>
@@ -150,15 +151,11 @@
           <div class="stat"><div class="stat-l">Employees</div><div class="stat-v">4</div></div>
           <div class="stat"><div class="stat-l">Active policies</div><div class="stat-v" id="ovAct">3</div></div>
           <div class="stat"><div class="stat-l">Open queries</div><div class="stat-v" id="ovQ">3</div></div>
-          <div class="stat"><div class="stat-l">Leaves taken</div><div class="stat-v">27</div></div>
         </div>
         <div class="card">
           <div class="card-title" style="margin-bottom:1rem"><i class="ti ti-chart-bar" aria-hidden="true"></i> Leave utilisation by employee</div>
           <div style="position:relative;height:175px"><canvas id="ovChart" role="img" aria-label="Stacked bar chart of leave per employee">Leave: Priya 15, Rajan 8, Ananya 22, Dev 7 days.</canvas></div>
         </div>
-        <div class="card">
-          <div class="card-title" style="margin-bottom:1rem"><i class="ti ti-heart-handshake" aria-hidden="true"></i> Engagement snapshot</div>
-          <div id="engagementAdminStats"></div>
         </div>
       </div>
     </div>
@@ -195,15 +192,14 @@
     <div class="sidebar" id="eSidebar">
       <div class="nsec">My space</div>
       <div class="ni act" onclick="ePage('home',this)"><i class="ti ti-home" aria-hidden="true"></i> Home</div>
-      <div class="ni" onclick="ePage('myLeaves',this)"><i class="ti ti-calendar" aria-hidden="true"></i> My leaves</div>
-      <div class="ni" onclick="ePage('aiChat',this)"><i class="ti ti-robot" aria-hidden="true"></i> Ask HR AI</div>
       <div class="ni" onclick="ePage('engage',this)"><i class="ti ti-sparkles" aria-hidden="true"></i> Engage</div>
+      <div class="ni" onclick="ePage('news',this)"><i class="ti ti-speakerphone" aria-hidden="true"></i> News</div>
+      <div class="ni" onclick="ePage('aiChat',this)"><i class="ti ti-robot" aria-hidden="true"></i> Ask HR AI</div>
+      <div class="ni" onclick="ePage('myLeaves',this)"><i class="ti ti-calendar" aria-hidden="true"></i> My leaves</div>
       <div class="ni" onclick="ePage('raiseQuery',this)"><i class="ti ti-message-plus" aria-hidden="true"></i> Raise query</div>
       <div class="ni" onclick="ePage('ePolicies',this)"><i class="ti ti-file-text" aria-hidden="true"></i> Policies</div>
       <div class="ni" onclick="ePage('eDocuments',this)"><i class="ti ti-folder" aria-hidden="true"></i> Documents</div>
-      <div class="ni" onclick="ePage('news',this)"><i class="ti ti-speakerphone" aria-hidden="true"></i> News</div>
-      <div class="ni" onclick="ePage('resume',this)"><i class="ti ti-file-cv" aria-hidden="true"></i> Resume</div>
-      <div class="ni" onclick="ePage('games',this)"><i class="ti ti-letters-case" aria-hidden="true"></i> Words of Wonders</div>
+      <div class="ni" onclick="ePage('games',this)"><i class="ti ti-gaming-console" aria-hidden="true"></i> Words of Wonders</div>
     </div>
     <div class="main">
       <div class="pg act" id="pg-home">
@@ -359,33 +355,6 @@
           <div id="teamWallList" style="margin-top:1rem"></div>
         </div>
       </div>
-      <div class="pg" id="pg-resume">
-        <div class="pg-title">Resume builder</div><div class="pg-sub">Create, edit, preview, and print your professional resume</div>
-        <div class="resume-layout">
-          <div class="card">
-            <div class="card-hd"><div class="card-title"><i class="ti ti-edit" aria-hidden="true"></i> Resume editor</div><button class="btn sm" onclick="prefillResumeFromProfile()"><i class="ti ti-wand" aria-hidden="true"></i> Fill from profile</button></div>
-            <div class="fg2">
-              <div class="fi"><label>Full name</label><input id="resName" oninput="renderResumePreview()"></div>
-              <div class="fi"><label>Job title</label><input id="resTitle" oninput="renderResumePreview()"></div>
-            </div>
-            <div class="fg2">
-              <div class="fi"><label>Email</label><input id="resEmail" oninput="renderResumePreview()"></div>
-              <div class="fi"><label>Phone</label><input id="resPhone" oninput="renderResumePreview()"></div>
-            </div>
-            <div class="fi"><label>Location / LinkedIn</label><input id="resLinks" placeholder="City | LinkedIn | Portfolio" oninput="renderResumePreview()"></div>
-            <div class="fi"><label>Professional summary</label><textarea id="resSummary" oninput="renderResumePreview()" placeholder="2-3 lines about your experience and strengths"></textarea></div>
-            <div class="fi"><label>Skills</label><textarea id="resSkills" oninput="renderResumePreview()" placeholder="Comma separated skills"></textarea></div>
-            <div class="fi"><label>Experience</label><textarea id="resExperience" oninput="renderResumePreview()" placeholder="Role - Company - Dates&#10;- Achievement one&#10;- Achievement two"></textarea></div>
-            <div class="fi"><label>Education</label><textarea id="resEducation" oninput="renderResumePreview()" placeholder="Degree - Institute - Year"></textarea></div>
-            <div class="fi"><label>Projects / Certifications</label><textarea id="resProjects" oninput="renderResumePreview()" placeholder="Project or certification details"></textarea></div>
-            <div class="modal-foot"><button class="btn" onclick="resetResumeForm()"><i class="ti ti-refresh" aria-hidden="true"></i> Reset</button><button class="btn pri" onclick="saveResume()"><i class="ti ti-device-floppy" aria-hidden="true"></i> Save resume</button></div>
-          </div>
-          <div class="card">
-            <div class="card-hd"><div class="card-title"><i class="ti ti-file-text" aria-hidden="true"></i> Resume preview</div><button class="btn pri sm" onclick="printResume()"><i class="ti ti-printer" aria-hidden="true"></i> Print / PDF</button></div>
-            <div class="resume-sheet" id="resumePreview"></div>
-          </div>
-        </div>
-      </div>
       <div class="pg" id="pg-games">
         <div class="pg-title">Words of Wonders</div><div class="pg-sub">Build words from letters and complete each level</div>
         <div class="game-shell">
@@ -420,7 +389,7 @@
     </div>
     <div class="fi"><label>Effective date</label><input type="date" id="pDt"></div>
     <div class="fi"><label>Master policy document</label><input id="pMasterDoc" type="file" accept=".pdf,.docx,.txt,.md,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"></div>
-    <div class="hint-box" style="margin-top:0">HRPulse will tokenize headings like "Annual Leave Policy", "1. Attendance Policy", or all-caps section titles into separate policy cards.</div>
+    <div class="hint-box" style="margin-top:0">VayanaPulse will tokenize headings like "Annual Leave Policy", "1. Attendance Policy", or all-caps section titles into separate policy cards.</div>
     <div class="fi"><label>Or paste master policy text</label><textarea id="pDs" placeholder="Paste all policy text here if you do not upload a document..."></textarea></div>
     <div id="policyTokenPreview" class="token-preview"></div>
     <div class="modal-foot"><button class="btn" onclick="closeM('mPol')">Cancel</button><button class="btn pri" id="policyTokenizeBtn" type="button" onclick="importPolicies()"><i class="ti ti-wand" aria-hidden="true"></i> Tokenize & save policies</button></div>
