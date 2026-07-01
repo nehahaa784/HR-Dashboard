@@ -4,12 +4,12 @@ let lastEmployeeSheetModifiedAt=0, employeeSheetSyncing=false;
 let pidNext=6;
 const COMPANY={
   companyName:'Vayana Network',
-  portalName:'HRPulse',
+  portalName:'VayanaPulse',
   portalSubtitle:'Internal HR Portal',
   supportEmail:'hr@vayana.com',
   securityNotice:'Authorized employees only. Activity may be reviewed for HR governance.',
   showDemoCredentials:true,
-  ...(window.HRPULSE_COMPANY||{})
+  ...(window.VAYANAPULSE_COMPANY||{})
 };
 
 const CREDS={admin:{e:'admin@company.com',p:'admin123'},employee:{e:'priya@company.com',p:'emp123'}};
@@ -272,7 +272,7 @@ addBot(data.answer);
 
   const a=lv.annual,s=lv.sick,w=lv.wfh,c=lv.comp;
   const polCtx=policies.filter(p=>p.status==='Active').map(p=>`• ${p.name}: ${p.desc}`).join('\n');
-  const sys=`You are a friendly HR assistant chatbot for HRPulse. You are chatting with Priya K., an employee.
+  const sys=`You are a friendly HR assistant chatbot for VayanaPulse. You are chatting with Priya K., an employee.
 
 PRIYA'S LIVE LEAVE BALANCES:
 • Annual leave: ${a.u} used, ${a.t-a.u} remaining (total ${a.t})
@@ -509,15 +509,13 @@ function policyReadDetails(employee){
   }).join('')}</div>`;
 }
 function portalBrand(role){
-  const name=COMPANY.portalName||'HRPulse';
-  const split=name.length>2?`<span>${name.slice(0,2)}</span>${name.slice(2)}`:name;
-  return `${split} <span style="font-size:11px;color:var(--color-text-tertiary);font-weight:400;margin-left:4px">${role}</span>`;
+  return `<img class="brand-logo" src="assets/Vayana-Logo.svg" alt="Vayana"><span class="brand-product">VayanaPulse</span>${role?` <span class="brand-role">${role}</span>`:''}`;
 }
 function applyCompanyBranding(){
   document.title=`${COMPANY.portalName} - ${COMPANY.companyName} HR portal`;
   document.querySelector('.sr-only').textContent=`${COMPANY.portalName} - ${COMPANY.companyName} HR portal`;
   const loginBrand=document.querySelector('.login-brand');
-  if(loginBrand) loginBrand.innerHTML=portalBrand('').replace(/ <span[^>]*><\/span>$/,'');
+  if(loginBrand) loginBrand.innerHTML=portalBrand('');
   const loginSub=document.querySelector('.login-sub');
   if(loginSub) loginSub.textContent=`Sign in to ${COMPANY.companyName} HR workspace`;
   const loginTag=document.querySelector('.login-tagline');
@@ -712,19 +710,36 @@ window.reactNews=function(newsId,type){
   if(!item||!empId) return;
   item.reactions=item.reactions||{};
   item.reactions[type]=item.reactions[type]||[];
-  if(item.reactions[type].includes(empId)) item.reactions[type]=item.reactions[type].filter(id=>id!==empId);
-  else item.reactions[type].push(empId);
+  if(item.reactions[type].includes(empId)){
+    toast('Already acknowledged');
+    return;
+  }
+  item.reactions[type].push(empId);
   saveStore();
+  if(type==='love') showHeartPop();
   renderNewsPortal();
   renderEmployeeHome();
 };
+
+function showHeartPop(){
+  const heart=document.createElement('div');
+  heart.className='heart-pop';
+  heart.innerHTML='<i class="ti ti-heart-filled" aria-hidden="true"></i>';
+  document.body.appendChild(heart);
+  setTimeout(()=>heart.remove(),900);
+}
 window.renderAdminDocuments=function(){
   const empSelect=document.getElementById('docEmp');
   const list=document.getElementById('adminDocList');
   if(!empSelect||!list) return;
   empSelect.innerHTML=store.employees.map(e=>`<option value="${e.id}">${e.name} - ${e.dept||'General'}</option>`).join('');
-  const rows=store.employees.flatMap(e=>(e.documents||[]).map(doc=>({...doc,employee:e}))).sort((a,b)=>new Date(b.uploadedAt)-new Date(a.uploadedAt));
-  list.innerHTML=rows.length?rows.map(doc=>`<div class="document-row"><div class="document-icon"><i class="ti ${docTypeIcon(doc.type)}" aria-hidden="true"></i></div><div><div class="ri-name">${doc.title}</div><div class="ri-meta">${doc.employee.name} - ${docTypeLabel(doc.type)} - ${formatQueryTime(doc.uploadedAt)}</div><div class="ri-meta">${doc.fileName||'Attached document'} - ${doc.acknowledgedAt?`Acknowledged ${formatQueryTime(doc.acknowledgedAt)}`:'Not acknowledged'}</div></div><div class="ri-right"><a class="btn sm" href="${doc.fileData}" download="${doc.fileName||doc.title}" target="_blank" rel="noopener"><i class="ti ti-download" aria-hidden="true"></i> Download</a><button class="btn sm danger" onclick="deleteEmployeeDocument('${doc.employee.id}','${doc.id}')"><i class="ti ti-trash" aria-hidden="true"></i></button></div></div>`).join(''):'<div class="empty-state">No employee documents uploaded yet.</div>';
+  const search=(document.getElementById('docEmployeeSearch')?.value||'').trim().toLowerCase();
+  const employees=search
+    ? store.employees.filter(e=>`${e.name} ${e.email} ${e.dept||''}`.toLowerCase().includes(search))
+    : store.employees;
+  const rows=employees.flatMap(e=>(e.documents||[]).map(doc=>({...doc,employee:e}))).sort((a,b)=>new Date(b.uploadedAt)-new Date(a.uploadedAt));
+  const emptyText=search?'No documents found for that employee search.':'No employee documents uploaded yet.';
+  list.innerHTML=rows.length?rows.map(doc=>`<div class="document-row"><div class="document-icon"><i class="ti ${docTypeIcon(doc.type)}" aria-hidden="true"></i></div><div><div class="ri-name">${doc.title}</div><div class="ri-meta">${doc.employee.name} - ${doc.employee.email} - ${docTypeLabel(doc.type)} - ${formatQueryTime(doc.uploadedAt)}</div><div class="ri-meta">${doc.fileName||'Attached document'} - ${doc.acknowledgedAt?`Acknowledged ${formatQueryTime(doc.acknowledgedAt)}`:'Not acknowledged'}</div></div><div class="ri-right"><a class="btn sm" href="${doc.fileData}" download="${doc.fileName||doc.title}" target="_blank" rel="noopener"><i class="ti ti-download" aria-hidden="true"></i> Download</a><button class="btn sm danger" onclick="deleteEmployeeDocument('${doc.employee.id}','${doc.id}')"><i class="ti ti-trash" aria-hidden="true"></i></button></div></div>`).join(''):`<div class="empty-state">${emptyText}</div>`;
 };
 window.addEmployeeDocument=async function(){
   const empId=document.getElementById('docEmp')?.value;
@@ -829,8 +844,13 @@ window.likeWallPost=function(id){
   const empId=currentUser?.id;
   if(!post||!empId) return;
   post.likes=post.likes||[];
-  post.likes=post.likes.includes(empId)?post.likes.filter(x=>x!==empId):[...post.likes,empId];
+  if(post.likes.includes(empId)){
+    toast('Already acknowledged');
+    return;
+  }
+  post.likes=[...post.likes,empId];
   saveStore();
+  showHeartPop();
   renderTeamWall();
 };
 function renderTeamWall(){
@@ -1218,17 +1238,36 @@ window.doLogin=function(){
   enterPortal();
 };
 
+function showScreen(screenId){
+  document.querySelectorAll('.screen').forEach(screen=>{
+    screen.classList.remove('active');
+    screen.style.display='none';
+    screen.style.minHeight='0';
+    screen.style.height='0';
+  });
+  const active=document.getElementById(screenId);
+  if(active){
+    active.classList.add('active');
+    active.style.display='flex';
+    active.style.minHeight='100vh';
+    active.style.height='auto';
+  }
+  requestAnimationFrame(()=>window.scrollTo({top:0,left:0,behavior:'instant'}));
+}
+
 function enterPortal(){
-  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  window.scrollTo(0,0);
+  document.documentElement.scrollTop=0;
+  document.body.scrollTop=0;
   if(liveRole==='employee'){
     const employee=employeeById(currentUser?.id)||currentUser;
     if(employee?.bvg?.status!=='approved'){
-      document.getElementById('s-preboarding').classList.add('active');
+      showScreen('s-preboarding');
       renderPreboardingPortal();
       return;
     }
   }
-  document.getElementById(liveRole==='hr'?'s-admin':'s-employee').classList.add('active');
+  showScreen(liveRole==='hr'?'s-admin':'s-employee');
   if(liveRole==='hr'){
     document.getElementById('hrAvatar').textContent=initials(currentUser.name);
     document.getElementById('hrTopName').textContent=currentUser.name;
@@ -1262,8 +1301,7 @@ window.saveNewPassword=function(){
 
 window.logout=function(){
   currentUser=null;
-  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
-  document.getElementById('s-login').classList.add('active');
+  showScreen('s-login');
 };
 
 window.renderPolicies=function(){
@@ -2009,7 +2047,7 @@ window.initChat=function(){
   document.getElementById('chatMsgs').innerHTML='';
   document.getElementById('chatErr').style.display='none';
   const e=employeeById(currentUser?.id)||store.employees[0];
-  addBot(`Hi ${e.name.split(' ')[0]}! I can answer from live HRPulse data: policies, leaves, documents, your queries, and announcements. What would you like to know?`);
+  addBot(`Hi ${e.name.split(' ')[0]}! I search the uploaded HR policies first, then answer with live VayanaPulse data like leaves, documents, your queries, and announcements. What would you like to know?`);
   checkAiStatus();
 };
 
@@ -2020,10 +2058,130 @@ function setAiStatus(state,text){
   el.innerHTML=`<i class="ti ${state==='live'?'ti-circle-check':state==='thinking'?'ti-loader-2':'ti-alert-circle'}" aria-hidden="true"></i> ${text}`;
 }
 
+const RAG_STOPWORDS=new Set('about above after again all also am an and any are as at be because been before being below between both but by can could did do does doing down during each few for from further had has have having he her here hers herself him himself his how i if in into is it its itself just me more most my myself no nor not of off on once only or other our ours ourselves out over own same she should so some such than that the their theirs them themselves then there these they this those through to too under until up very was we were what when where which while who whom why will with you your yours yourself yourselves'.split(' '));
+const RAG_SYNONYMS={
+  wfh:'work from home remote hybrid',
+  remote:'wfh work from home hybrid',
+  leave:'annual sick casual paid time off pto holiday vacation',
+  pto:'leave annual paid time off vacation',
+  salary:'payroll compensation payslip',
+  pay:'payroll compensation payslip',
+  maternity:'parental pregnancy',
+  paternity:'parental',
+  benefit:'insurance wellness allowance reimbursements'
+};
+
+function normalizeRagText(value){
+  return String(value||'').toLowerCase().replace(/[^a-z0-9\s]/g,' ').replace(/\s+/g,' ').trim();
+}
+
+function expandRagQuery(value){
+  const base=String(value||'');
+  const extras=normalizeRagText(base).split(' ').flatMap(token=>RAG_SYNONYMS[token]?.split(' ')||[]);
+  return `${base} ${extras.join(' ')}`;
+}
+
+function ragTokens(value){
+  return normalizeRagText(value)
+    .split(' ')
+    .filter(token=>token.length>2&&!RAG_STOPWORDS.has(token));
+}
+
+function chunkPolicyText(text,maxLength=720){
+  const cleaned=String(text||'').replace(/\r/g,'').trim();
+  if(!cleaned) return [];
+  const parts=cleaned
+    .split(/\n{2,}|(?<=\.)\s+(?=[A-Z0-9])/)
+    .map(part=>part.trim())
+    .filter(Boolean);
+  const chunks=[];
+  let current='';
+  parts.forEach(part=>{
+    if(!current){
+      current=part;
+    }else if((current.length+part.length+1)<=maxLength){
+      current=`${current} ${part}`;
+    }else{
+      chunks.push(current);
+      current=part;
+    }
+  });
+  if(current) chunks.push(current);
+  return chunks.length?chunks:[cleaned.slice(0,maxLength)];
+}
+
+function policyRagChunks(){
+  return activePolicies().flatMap(policy=>{
+    const body=policySummary(policy);
+    const textChunks=chunkPolicyText(body);
+    return textChunks.map((text,index)=>({
+      id:`${policy.id}-${index}`,
+      policyId:policy.id,
+      name:policy.name,
+      cat:policy.cat,
+      date:policy.date,
+      updatedAt:policy.updatedAt||policy.date,
+      status:policy.status,
+      text,
+      sourceFileName:policy.fileName||policy.sourceFileName||'',
+      score:0
+    }));
+  });
+}
+
+function scoreRagChunk(question,chunk){
+  const expanded=expandRagQuery(question);
+  const qTokens=ragTokens(expanded);
+  if(!qTokens.length) return 0;
+  const chunkText=normalizeRagText(`${chunk.name} ${chunk.cat} ${chunk.text}`);
+  const chunkTokens=new Set(ragTokens(chunkText));
+  const title=normalizeRagText(chunk.name);
+  const category=normalizeRagText(chunk.cat);
+  let score=0;
+  qTokens.forEach(token=>{
+    if(chunkTokens.has(token)) score+=2;
+    if(title.includes(token)) score+=4;
+    if(category.includes(token)) score+=2;
+    if(chunkText.includes(token)) score+=0.5;
+  });
+  const phrase=normalizeRagText(question);
+  if(phrase&&chunkText.includes(phrase)) score+=10;
+  return score;
+}
+
+function retrievePolicyContext(question,limit=5){
+  const chunks=policyRagChunks()
+    .map(chunk=>({...chunk,score:scoreRagChunk(question,chunk)}))
+    .sort((a,b)=>b.score-a.score);
+  const top=chunks.filter(chunk=>chunk.score>0).slice(0,limit);
+  return top.length?top:chunks.slice(0,Math.min(limit,chunks.length));
+}
+
+function ragSourceNames(chunks){
+  return [...new Set((chunks||[]).map(chunk=>chunk.name).filter(Boolean))];
+}
+
+function withRagSources(answer,chunks){
+  const names=ragSourceNames(chunks);
+  if(!names.length||/sources?:/i.test(answer||'')) return answer;
+  return `${answer}\n\nSources: ${names.join(', ')}`;
+}
+
+function ragFallbackAnswer(question,chunks){
+  if(!chunks?.length) return '';
+  const first=chunks[0];
+  const excerpt=first.text.length>520?`${first.text.slice(0,520).trim()}...`:first.text;
+  return withRagSources(`From ${first.name}: ${excerpt}`,chunks.slice(0,3));
+}
+
 function aiPayload(question,employee){
   const docs=(employee.documents||[]).map(doc=>({type:doc.type,title:doc.title,fileName:doc.fileName,uploadedAt:doc.uploadedAt,acknowledgedAt:doc.acknowledgedAt||''}));
+  const ragContext=retrievePolicyContext(question,5);
   return {
     question,
+    retrievalMode:'local-policy-rag',
+    ragContext,
+    ragSources:ragSourceNames(ragContext),
     employee:{
       name:employee.name,
       email:employee.email,
@@ -2035,7 +2193,8 @@ function aiPayload(question,employee){
       gameProgress:employee.gameProgress||null,
       learningCompletions:employee.learningCompletions||[]
     },
-    policies:store.policies.filter(p=>p.status==='Active'),
+    policies:ragContext.map(chunk=>({id:chunk.policyId,name:chunk.name,cat:chunk.cat,date:chunk.date,status:chunk.status,desc:chunk.text,score:chunk.score})),
+    activePolicyCount:activePolicies().length,
     unreadPolicies:unreadPolicies(employee).map(p=>({id:p.id,name:p.name,cat:p.cat})),
     queries:employeeQueries(employee).slice(0,8),
     documents:docs,
@@ -2063,28 +2222,32 @@ window.sendChat=async function(){
   const inp=document.getElementById('chatIn'), msg=inp.value.trim();
   if(!msg) return;
   inp.value='';addUser(msg);botBusy=true;showTyping();setAiStatus('thinking','Live AI is thinking...');
+  const e=employeeById(currentUser?.id)||store.employees[0];
+  const payload=aiPayload(msg,e);
   try{
-    const e=employeeById(currentUser?.id)||store.employees[0];
     const res=await fetch('/api/hr-policy-ai',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify(aiPayload(msg,e))
+      body:JSON.stringify(payload)
     });
     const data=await res.json();
     if(!res.ok) throw new Error(data.error||'AI request failed');
-    chatHistory.push({role:'user',content:msg},{role:'assistant',content:data.answer});
-    hideTyping();botBusy=false;setAiStatus('live',`Live AI connected (${data.source||'ai'}: ${data.model||'model'})`);addBot(data.answer);
+    const answer=withRagSources(data.answer,payload.ragContext);
+    chatHistory.push({role:'user',content:msg},{role:'assistant',content:answer});
+    hideTyping();botBusy=false;setAiStatus('live',`RAG + Live AI connected (${data.source||'ai'}: ${data.model||'model'})`);addBot(answer);
   }catch(err){
     hideTyping();botBusy=false;
     const errBox=document.getElementById('chatErr');
-    errBox.textContent=`Live AI is unavailable: ${err.message}. Showing the built-in HRPulse answer instead.`;
+    errBox.textContent=`Live AI is unavailable: ${err.message}. Showing the local VayanaPulse RAG answer instead.`;
     errBox.style.display='block';
-    setAiStatus('offline','Live AI unavailable - using built-in answers');
-    addBot(localReply(msg));
+    setAiStatus('offline','Live AI unavailable - using local RAG answers');
+    const fallback=localReply(msg,payload.ragContext);
+    chatHistory.push({role:'user',content:msg},{role:'assistant',content:fallback});
+    addBot(fallback);
   }
 };
 
-function localReply(msg){
+function localReply(msg,ragContext=[]){
   const e=employeeById(currentUser?.id)||store.employees[0], l=e.leave, m=msg.toLowerCase();
   if(m.includes('unread')) {
     const unread=unreadPolicies(e);
@@ -2098,8 +2261,10 @@ function localReply(msg){
   if(m.includes('sick')) return `You have ${l.sick.t-l.sick.u} sick leave day(s) left. A medical certificate is required only for 3 or more consecutive sick days.`;
   if(m.includes('wfh')||m.includes('work from home')) return `You have ${l.wfh.t-l.wfh.u} WFH day(s) left. The active WFH policy allows up to 3 days per week with manager approval.`;
   if(m.includes('carry')) return 'The Annual Leave Policy allows up to 5 unused annual leave days to be carried forward to the next year.';
-  if(m.includes('benefit')) return 'Current active benefit details are listed under active policies. HR has a maternity and paternity policy in draft, so ask HR before relying on it.';
-  return `I found ${store.policies.filter(p=>p.status==='Active').length} active policies and your live balances: annual ${l.annual.t-l.annual.u}, sick ${l.sick.t-l.sick.u}, WFH ${l.wfh.t-l.wfh.u}, comp-off ${l.comp.t-l.comp.u}. For requests, use the My leaves tab.`;
+  const ragAnswer=ragFallbackAnswer(msg,ragContext);
+  if(ragAnswer) return ragAnswer;
+  if(m.includes('benefit')) return 'I could not find a matching benefits policy excerpt in the uploaded active policies. Please check the Policies tab or contact HR.';
+  return `I found ${activePolicies().length} active policies and your live balances: annual ${l.annual.t-l.annual.u}, sick ${l.sick.t-l.sick.u}, WFH ${l.wfh.t-l.wfh.u}, comp-off ${l.comp.t-l.comp.u}. For requests, use the My leaves tab.`;
 }
 
 /*game*/
@@ -2662,6 +2827,7 @@ function bindPolicyImporter(){
 
 enhanceUI();
 bindPolicyImporter();
+if('scrollRestoration' in history) history.scrollRestoration='manual';
+showScreen('s-login');
 selRole('admin');
-saveStore();
-
+saveStore();  
